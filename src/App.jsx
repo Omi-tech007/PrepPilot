@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, BookOpen, Zap, Flame, Trophy, 
   Play, Pause, CheckCircle, X, ChevronRight, 
-  Plus, Trash2, FileText, TrendingUp, LogOut, User
+  Plus, Trash2, FileText, TrendingUp, LogOut, Filter
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -17,7 +17,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEE TRACKER PRO - v7.0 (Google Auth & Cloud Sync)
+ * JEE TRACKER PRO - v8.0 (Mains vs Advanced Logic)
  */
 
 // --- CONSTANTS ---
@@ -162,22 +162,40 @@ const ZenTimer = ({ data, onSaveSession, onExit }) => {
   );
 };
 
-// --- 3. MOCK TEST TRACKER ---
+// --- 3. MOCK TEST TRACKER (UPDATED) ---
 const MockTestTracker = ({ data, setData }) => {
   const [isAdding, setIsAdding] = useState(false);
-  const [newTest, setNewTest] = useState({ name: '', date: '', p: '', c: '', m: '' });
+  const [filterType, setFilterType] = useState('All'); // 'All', 'Mains', 'Advanced'
+  
+  // Form State
+  const [testType, setTestType] = useState('Mains'); // 'Mains' or 'Advanced'
+  const [newTest, setNewTest] = useState({ 
+    name: '', date: '', p: '', c: '', m: '', maxMarks: 300 
+  });
 
   const addTest = () => {
     if (!newTest.name || !newTest.date) return;
-    const p = parseInt(newTest.p) || 0;
-    const c = parseInt(newTest.c) || 0;
-    const m = parseInt(newTest.m) || 0;
+    const p = parseFloat(newTest.p) || 0;
+    const c = parseFloat(newTest.c) || 0;
+    const m = parseFloat(newTest.m) || 0;
     const total = p + c + m;
+    
+    // For mains, force max marks to 300. For Adv, use custom input
+    const max = testType === 'Mains' ? 300 : (parseInt(newTest.maxMarks) || 360);
 
-    const testEntry = { id: Date.now(), ...newTest, p, c, m, total };
+    const testEntry = { 
+      id: Date.now(), 
+      type: testType,
+      name: newTest.name, 
+      date: newTest.date, 
+      p, c, m, 
+      total,
+      maxMarks: max
+    };
+
     setData(prev => ({ ...prev, mockTests: [...(prev.mockTests || []), testEntry] }));
     setIsAdding(false);
-    setNewTest({ name: '', date: '', p: '', c: '', m: '' });
+    setNewTest({ name: '', date: '', p: '', c: '', m: '', maxMarks: 300 });
   };
 
   const deleteTest = (id) => {
@@ -186,14 +204,25 @@ const MockTestTracker = ({ data, setData }) => {
     }
   };
 
-  const sortedTests = [...(data.mockTests || [])].sort((a,b) => new Date(a.date) - new Date(b.date));
+  // Filter and Sort
+  const filteredTests = (data.mockTests || []).filter(t => {
+    if (filterType === 'All') return true;
+    return t.type === filterType || (!t.type && filterType === 'Mains'); // Backward compat
+  });
+  
+  const sortedTests = [...filteredTests].sort((a,b) => new Date(a.date) - new Date(b.date));
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
            <h1 className="text-3xl font-bold text-white mb-2">Mock Test Analysis</h1>
-           <p className="text-gray-400">Track your scores and analyze performance trends.</p>
+           <p className="text-gray-400">Track scores for JEE Mains & Advanced separately.</p>
+        </div>
+        <div className="flex gap-2">
+            <button onClick={() => setFilterType('All')} className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${filterType==='All' ? 'bg-white text-black border-white' : 'border-white/10 text-gray-400'}`}>All</button>
+            <button onClick={() => setFilterType('Mains')} className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${filterType==='Mains' ? 'bg-violet-600 text-white border-violet-600' : 'border-white/10 text-gray-400'}`}>Mains</button>
+            <button onClick={() => setFilterType('Advanced')} className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${filterType==='Advanced' ? 'bg-orange-500 text-white border-orange-500' : 'border-white/10 text-gray-400'}`}>Adv</button>
         </div>
         <button onClick={() => setIsAdding(!isAdding)} className="px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold shadow-lg shadow-violet-600/20 flex items-center gap-2">
           {isAdding ? <X size={18}/> : <Plus size={18}/>} {isAdding ? 'Cancel' : 'Log New Test'}
@@ -201,11 +230,24 @@ const MockTestTracker = ({ data, setData }) => {
       </div>
 
       {isAdding && (
-        <GlassCard className="animate-in fade-in slide-in-from-top-4">
+        <GlassCard className="animate-in fade-in slide-in-from-top-4 border-t-4 border-t-violet-500">
+          
+          {/* TYPE SELECTOR */}
+          <div className="flex gap-4 mb-6">
+             <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="testType" className="accent-violet-500 w-5 h-5" checked={testType === 'Mains'} onChange={() => setTestType('Mains')} />
+                <span className={testType === 'Mains' ? 'text-white font-bold' : 'text-gray-400'}>JEE Mains (300)</span>
+             </label>
+             <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="testType" className="accent-orange-500 w-5 h-5" checked={testType === 'Advanced'} onChange={() => setTestType('Advanced')} />
+                <span className={testType === 'Advanced' ? 'text-white font-bold' : 'text-gray-400'}>JEE Advanced (Custom)</span>
+             </label>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
             <div className="md:col-span-2 space-y-2">
               <label className="text-xs text-gray-400 font-bold uppercase">Test Name</label>
-              <input type="text" placeholder="e.g., AITS Full Test 1" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-violet-500 outline-none" 
+              <input type="text" placeholder={testType === 'Mains' ? "e.g., Full Syllabus Test 1" : "e.g., Paper 1 + Paper 2"} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-violet-500 outline-none" 
                 value={newTest.name} onChange={e => setNewTest({...newTest, name: e.target.value})} />
             </div>
             <div className="md:col-span-1 space-y-2">
@@ -213,6 +255,8 @@ const MockTestTracker = ({ data, setData }) => {
               <input type="date" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-violet-500 outline-none" 
                 value={newTest.date} onChange={e => setNewTest({...newTest, date: e.target.value})} />
             </div>
+            
+            {/* SUBJECT SCORES */}
             <div className="space-y-2">
               <label className="text-xs text-violet-400 font-bold uppercase">Physics</label>
               <input type="number" placeholder="0" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-violet-500 outline-none" 
@@ -229,13 +273,31 @@ const MockTestTracker = ({ data, setData }) => {
                 value={newTest.m} onChange={e => setNewTest({...newTest, m: e.target.value})} />
             </div>
           </div>
-          <button onClick={addTest} className="mt-6 w-full py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg transition">Save Test Score</button>
+
+          {/* ADVANCED CUSTOM MAX MARKS */}
+          {testType === 'Advanced' && (
+              <div className="mt-4 pt-4 border-t border-white/5">
+                  <label className="text-xs text-orange-400 font-bold uppercase">Total Max Marks (Custom)</label>
+                  <div className="flex items-center gap-4">
+                      <input type="number" placeholder="e.g. 360, 180, 400" className="w-40 bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-orange-500 outline-none"
+                      value={newTest.maxMarks} onChange={e => setNewTest({...newTest, maxMarks: e.target.value})} />
+                      <span className="text-xs text-gray-500">Since Advanced pattern changes every year, enter the total marks for this specific test.</span>
+                  </div>
+              </div>
+          )}
+
+          <button onClick={addTest} className={`mt-6 w-full py-3 font-bold rounded-lg transition text-white ${testType === 'Mains' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
+              Save {testType} Score
+          </button>
         </GlassCard>
       )}
 
+      {/* CHART SECTION */}
       {sortedTests.length > 0 ? (
         <GlassCard className="h-[350px]">
-           <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><TrendingUp size={20}/> Performance Trend</h3>
+           <div className="flex justify-between items-center mb-4">
+               <h3 className="text-lg font-bold text-white flex items-center gap-2"><TrendingUp size={20}/> {filterType} Performance Trend</h3>
+           </div>
            <ResponsiveContainer width="100%" height="85%">
              <LineChart data={sortedTests}>
                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -252,28 +314,41 @@ const MockTestTracker = ({ data, setData }) => {
         </GlassCard>
       ) : (
         <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-gray-500">
-           No mock tests logged yet. Add your first test to see the analytics graph!
+           No {filterType !== 'All' ? filterType : ''} mock tests logged yet.
         </div>
       )}
 
+      {/* TEST HISTORY LIST */}
       <div className="grid grid-cols-1 gap-3">
         {sortedTests.slice().reverse().map(test => (
           <div key={test.id} className="group bg-[#121212] border border-white/10 p-4 rounded-xl flex items-center justify-between hover:border-white/20 transition">
-             <div>
-                <div className="flex items-center gap-3">
-                   <h3 className="font-bold text-white">{test.name}</h3>
-                   <span className="text-xs text-gray-500 bg-white/5 px-2 py-1 rounded">{test.date}</span>
-                </div>
-                <div className="flex gap-4 mt-2 text-sm">
-                   <span className="text-violet-400">P: {test.p}</span>
-                   <span className="text-green-400">C: {test.c}</span>
-                   <span className="text-blue-400">M: {test.m}</span>
+             <div className="flex gap-4 items-center">
+                {/* TYPE BADGE */}
+                <div className={`w-1 h-12 rounded-full ${test.type === 'Advanced' ? 'bg-orange-500' : 'bg-violet-500'}`}></div>
+                <div>
+                    <div className="flex items-center gap-3">
+                    <h3 className="font-bold text-white">{test.name}</h3>
+                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${test.type === 'Advanced' ? 'bg-orange-500/20 text-orange-400' : 'bg-violet-500/20 text-violet-400'}`}>
+                        {test.type || 'Mains'}
+                    </span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">{test.date}</div>
+                    <div className="flex gap-4 mt-2 text-sm">
+                    <span className="text-violet-400">P: {test.p}</span>
+                    <span className="text-green-400">C: {test.c}</span>
+                    <span className="text-blue-400">M: {test.m}</span>
+                    </div>
                 </div>
              </div>
+             
              <div className="flex items-center gap-6">
                 <div className="text-right">
-                   <div className="text-2xl font-bold text-white">{test.total}</div>
-                   <div className="text-xs text-gray-500 uppercase">Total</div>
+                   <div className="text-2xl font-bold text-white">
+                       {test.total} <span className="text-sm text-gray-500 font-normal">/ {test.maxMarks || 300}</span>
+                   </div>
+                   <div className="text-xs text-gray-500 uppercase">
+                       {Math.round((test.total / (test.maxMarks || 300)) * 100)}%
+                   </div>
                 </div>
                 <button onClick={() => deleteTest(test.id)} className="p-2 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
                    <Trash2 size={18} />
