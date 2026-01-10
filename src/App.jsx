@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, BookOpen, Zap, Flame, Trophy, 
   Play, Pause, CheckCircle, X, ChevronRight, 
   Plus, Trash2, FileText, TrendingUp, LogOut,
-  Timer as TimerIcon, StopCircle, Target
+  Timer as TimerIcon, StopCircle, Target, User
 } from 'lucide-react';
 import { 
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -18,7 +18,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEEPLANET PRO - v13.0 (New Dashboard UI: Gauges + Smooth Graph)
+ * JEEPLANET PRO - v14.0 (Top Right Profile & Dropdown)
  */
 
 // --- CONSTANTS ---
@@ -48,6 +48,71 @@ const GlassCard = ({ children, className = "", hover = false }) => (
     {children}
   </motion.div>
 );
+
+// --- NEW PROFILE DROPDOWN COMPONENT ---
+const ProfileDropdown = ({ user, onLogout }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown if clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="flex items-center gap-3 p-1 rounded-full hover:bg-white/5 transition-colors border border-transparent hover:border-white/10"
+      >
+        <div className="hidden md:block text-right mr-1">
+          <p className="text-sm font-bold text-white leading-none">{user.displayName?.split(' ')[0]}</p>
+          <p className="text-[10px] text-gray-400 leading-none mt-1">JEE Aspirant</p>
+        </div>
+        {user.photoURL ? (
+          <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full border-2 border-violet-500/50" />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold border-2 border-violet-400">
+            {user.displayName?.[0] || "U"}
+          </div>
+        )}
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            className="absolute right-0 mt-3 w-72 bg-[#18181b] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden"
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-white/5 bg-white/5">
+               <p className="text-white font-bold">{user.displayName}</p>
+               <p className="text-xs text-gray-400 mt-0.5 truncate">{user.email}</p>
+            </div>
+
+            {/* Menu Items */}
+            <div className="p-2">
+               <button 
+                 onClick={onLogout}
+                 className="w-full flex items-center gap-3 px-3 py-2.5 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-sm font-bold"
+               >
+                 <LogOut size={16} /> Log Out
+               </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 // --- 1. LOGIN SCREEN ---
 const LoginScreen = () => {
@@ -300,22 +365,17 @@ const ChapterItem = ({ subjectName, chapter, onUpdate, onDelete }) => {
   );
 };
 
-// --- 5. DASHBOARD (UPDATED VISUALS) ---
+// --- 5. DASHBOARD ---
 const Dashboard = ({ data, setData, goToTimer, user }) => {
-  // --- STATS CALCULATION ---
   const today = new Date().toISOString().split('T')[0];
   const history = data.history || {};
   const todayMins = history[today] || 0;
   
-  // 1. Total Study Time (Hours)
   const totalMinutes = Object.values(history).reduce((acc, curr) => acc + curr, 0);
   const totalHours = Math.floor(totalMinutes / 60);
   const totalRemMins = Math.round(totalMinutes % 60);
-
-  // 2. Active Days
   const activeDays = Object.keys(history).filter(k => history[k] > 0).length;
-
-  // 3. Current Streak
+  
   let streak = 0;
   if ((history[today] || 0) > 0) streak++;
   let d = new Date(); d.setDate(d.getDate() - 1);
@@ -323,11 +383,8 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
     const dateStr = d.toISOString().split('T')[0];
     if ((history[dateStr] || 0) > 0) { streak++; d.setDate(d.getDate() - 1); } else break;
   }
-
-  // 4. Avg Sessions/Day (Using Hours)
   const avgHours = activeDays > 0 ? (totalHours / activeDays).toFixed(1) : 0;
 
-  // 5. Weekly Data for Graph
   const getWeeklyData = () => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const chartData = [];
@@ -355,103 +412,26 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      
-      {/* 1. NEW OVERVIEW HEADER (GAUGES) */}
       <div className="text-center space-y-8 py-4">
-          <div>
-              <p className="text-gray-500 text-sm font-bold tracking-widest mb-2 uppercase">TOTAL STUDY TIME</p>
-              <h1 className="text-7xl font-bold text-white tracking-tighter drop-shadow-2xl">
-                  {totalHours}h <span className="text-4xl text-gray-500">{totalRemMins}m</span>
-              </h1>
-          </div>
-
+          <div><p className="text-gray-500 text-sm font-bold tracking-widest mb-2 uppercase">TOTAL STUDY TIME</p><h1 className="text-7xl font-bold text-white tracking-tighter drop-shadow-2xl">{totalHours}h <span className="text-4xl text-gray-500">{totalRemMins}m</span></h1></div>
           <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
-              {/* Gauge 1: Active Days */}
-              <div className="flex flex-col items-center">
-                  <div className="relative w-24 h-12 overflow-hidden mb-2">
-                      <div className="absolute w-24 h-24 rounded-full border-4 border-white/10 top-0 left-0 box-border"></div>
-                      <div className="absolute w-24 h-24 rounded-full border-4 border-violet-500 top-0 left-0 border-b-transparent border-l-transparent border-r-transparent" style={{transform: 'rotate(-45deg)'}}></div>
-                      <div className="absolute bottom-0 w-full text-center text-xl font-bold text-white">{activeDays}</div>
-                  </div>
-                  <span className="text-xs text-gray-400 font-bold uppercase">Active Days</span>
-              </div>
-
-              {/* Gauge 2: Current Streak */}
-              <div className="flex flex-col items-center">
-                  <div className="relative w-24 h-12 overflow-hidden mb-2">
-                       <div className="absolute w-24 h-24 rounded-full border-4 border-white/10 top-0 left-0 box-border"></div>
-                       <div className="absolute w-24 h-24 rounded-full border-4 border-white top-0 left-0 border-b-transparent border-l-transparent border-r-transparent" style={{transform: 'rotate(-45deg)'}}></div>
-                       <div className="absolute bottom-0 w-full text-center text-xl font-bold text-white">{streak}</div>
-                  </div>
-                  <span className="text-xs text-gray-400 font-bold uppercase">Day Streak</span>
-              </div>
-
-              {/* Gauge 3: Avg Hours */}
-              <div className="flex flex-col items-center">
-                  <div className="relative w-24 h-12 overflow-hidden mb-2">
-                       <div className="absolute w-24 h-24 rounded-full border-4 border-white/10 top-0 left-0 box-border"></div>
-                       <div className="absolute w-24 h-24 rounded-full border-4 border-violet-500 top-0 left-0 border-b-transparent border-l-transparent border-r-transparent" style={{transform: 'rotate(-45deg)'}}></div>
-                       <div className="absolute bottom-0 w-full text-center text-xl font-bold text-white">{avgHours}</div>
-                  </div>
-                  <span className="text-xs text-gray-400 font-bold uppercase">Hrs / Day</span>
-              </div>
+              <div className="flex flex-col items-center"><div className="relative w-24 h-12 overflow-hidden mb-2"><div className="absolute w-24 h-24 rounded-full border-4 border-white/10 top-0 left-0 box-border"></div><div className="absolute w-24 h-24 rounded-full border-4 border-violet-500 top-0 left-0 border-b-transparent border-l-transparent border-r-transparent" style={{transform: 'rotate(-45deg)'}}></div><div className="absolute bottom-0 w-full text-center text-xl font-bold text-white">{activeDays}</div></div><span className="text-xs text-gray-400 font-bold uppercase">Active Days</span></div>
+              <div className="flex flex-col items-center"><div className="relative w-24 h-12 overflow-hidden mb-2"><div className="absolute w-24 h-24 rounded-full border-4 border-white/10 top-0 left-0 box-border"></div><div className="absolute w-24 h-24 rounded-full border-4 border-white top-0 left-0 border-b-transparent border-l-transparent border-r-transparent" style={{transform: 'rotate(-45deg)'}}></div><div className="absolute bottom-0 w-full text-center text-xl font-bold text-white">{streak}</div></div><span className="text-xs text-gray-400 font-bold uppercase">Day Streak</span></div>
+              <div className="flex flex-col items-center"><div className="relative w-24 h-12 overflow-hidden mb-2"><div className="absolute w-24 h-24 rounded-full border-4 border-white/10 top-0 left-0 box-border"></div><div className="absolute w-24 h-24 rounded-full border-4 border-violet-500 top-0 left-0 border-b-transparent border-l-transparent border-r-transparent" style={{transform: 'rotate(-45deg)'}}></div><div className="absolute bottom-0 w-full text-center text-xl font-bold text-white">{avgHours}</div></div><span className="text-xs text-gray-400 font-bold uppercase">Hrs / Day</span></div>
           </div>
       </div>
 
-      {/* 2. SMOOTH GRADIENT GRAPH */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <GlassCard className="lg:col-span-2 min-h-[350px] flex flex-col">
-          <h3 className="text-lg font-bold text-white mb-6">This Week's Progress</h3>
-          <div className="flex-1 w-full min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={getWeeklyData()}>
-                <defs>
-                  <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} dy={10} />
-                <YAxis hide domain={[0, 'auto']} />
-                <RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', color: '#fff'}} itemStyle={{color: '#a78bfa'}} formatter={(value) => [`${value} hrs`, "Study Time"]} />
-                <Area type="monotone" dataKey="hours" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </GlassCard>
-
-        {/* DONUT CHART */}
-        <GlassCard className="min-h-[350px] flex flex-col items-center justify-center">
-          <h3 className="text-lg font-bold text-white mb-4 self-start">Subject Balance</h3>
-          <div className="relative w-full h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={2} dataKey="value">
-                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.name === 'No Data' ? '#333' : COLORS[index % COLORS.length]} stroke="none" />)}
-                </Pie>
-                <RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderRadius: '8px', border:'none'}} formatter={(val) => `${Math.round(val/60)}m`} />
-                <Legend verticalAlign="bottom" height={36} iconType="circle"/>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-               <span className="text-gray-500 text-xs font-bold uppercase">Today</span>
-               <span className="text-white text-2xl font-bold">{Math.round(todayMins/60)}h</span>
-            </div>
-          </div>
-        </GlassCard>
+        <GlassCard className="lg:col-span-2 min-h-[350px] flex flex-col"><h3 className="text-lg font-bold text-white mb-6">This Week's Progress</h3><div className="flex-1 w-full min-h-[250px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={getWeeklyData()}><defs><linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} dy={10} /><YAxis hide domain={[0, 'auto']} /><RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', color: '#fff'}} itemStyle={{color: '#a78bfa'}} formatter={(value) => [`${value} hrs`, "Study Time"]} /><Area type="monotone" dataKey="hours" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" /></AreaChart></ResponsiveContainer></div></GlassCard>
+        <GlassCard className="min-h-[350px] flex flex-col items-center justify-center"><h3 className="text-lg font-bold text-white mb-4 self-start">Subject Balance</h3><div className="relative w-full h-[250px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={2} dataKey="value">{pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.name === 'No Data' ? '#333' : COLORS[index % COLORS.length]} stroke="none" />)}</Pie><RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderRadius: '8px', border:'none'}} formatter={(val) => `${Math.round(val/60)}m`} /><Legend verticalAlign="bottom" height={36} iconType="circle"/></PieChart></ResponsiveContainer><div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8"><span className="text-gray-500 text-xs font-bold uppercase">Today</span><span className="text-white text-2xl font-bold">{Math.round(todayMins/60)}h</span></div></div></GlassCard>
       </div>
 
-      {/* TASKS */}
       <GlassCard>
            <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">Tasks</h3><button onClick={addTask} className="text-xs px-3 py-1 bg-white/10 text-white rounded hover:bg-white/20">+ Add</button></div>
            <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2">
              {data.tasks.map(task => (
                <div key={task.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-violet-500/50 transition cursor-pointer">
-                 <div onClick={() => toggleTask(task.id)} className="flex items-center gap-3">
-                   <div className={`w-5 h-5 rounded-full border-2 ${task.completed ? 'bg-violet-500 border-violet-500' : 'border-gray-600'}`}>{task.completed && <CheckCircle size={12} className="text-white mx-auto mt-0.5" />}</div>
-                   <span className={task.completed ? 'text-gray-500 line-through text-sm' : 'text-gray-200 text-sm'}>{task.text}</span>
-                 </div>
+                 <div onClick={() => toggleTask(task.id)} className="flex items-center gap-3"><div className={`w-5 h-5 rounded-full border-2 ${task.completed ? 'bg-violet-500 border-violet-500' : 'border-gray-600'}`}>{task.completed && <CheckCircle size={12} className="text-white mx-auto mt-0.5" />}</div><span className={task.completed ? 'text-gray-500 line-through text-sm' : 'text-gray-200 text-sm'}>{task.text}</span></div>
                  <button onClick={() => removeTask(task.id)} className="text-gray-600 hover:text-red-500"><X size={14}/></button>
                </div>
              ))}
@@ -560,10 +540,17 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <button onClick={handleLogout} className="mt-auto p-3 text-gray-600 hover:text-red-500 transition"><LogOut size={24} /></button>
       </aside>
 
       <main className="md:ml-20 flex-1 p-6 md:p-10 pb-24 h-screen overflow-y-auto">
+        {/* GLOBAL HEADER WITH PROFILE */}
+        <div className="flex justify-between items-center mb-8 sticky top-0 bg-[#09090b]/90 backdrop-blur-md z-30 py-4 -mt-4 border-b border-white/5">
+           <h2 className="text-2xl font-bold text-gray-200 capitalize flex items-center gap-2">
+             {view === 'kpp' ? 'Physics KPP' : view}
+           </h2>
+           <ProfileDropdown user={user} onLogout={handleLogout} />
+        </div>
+
         {view === 'dashboard' && <Dashboard data={data} setData={setData} goToTimer={() => setView('timer')} user={user} />}
         {view === 'timer' && <FocusTimer data={data} onSaveSession={saveSession} />} 
         {view === 'syllabus' && <Syllabus data={data} setData={setData} />}
