@@ -18,7 +18,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEEPLANET PRO - v14.0 (Top Right Profile & Dropdown)
+ * JEEPLANET PRO - v15.0 (Restored Test History List & Delete Option)
  */
 
 // --- CONSTANTS ---
@@ -54,7 +54,6 @@ const ProfileDropdown = ({ user, onLogout }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Close dropdown if clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -67,10 +66,7 @@ const ProfileDropdown = ({ user, onLogout }) => {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className="flex items-center gap-3 p-1 rounded-full hover:bg-white/5 transition-colors border border-transparent hover:border-white/10"
-      >
+      <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-3 p-1 rounded-full hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
         <div className="hidden md:block text-right mr-1">
           <p className="text-sm font-bold text-white leading-none">{user.displayName?.split(' ')[0]}</p>
           <p className="text-[10px] text-gray-400 leading-none mt-1">JEE Aspirant</p>
@@ -78,9 +74,7 @@ const ProfileDropdown = ({ user, onLogout }) => {
         {user.photoURL ? (
           <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full border-2 border-violet-500/50" />
         ) : (
-          <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold border-2 border-violet-400">
-            {user.displayName?.[0] || "U"}
-          </div>
+          <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold border-2 border-violet-400">{user.displayName?.[0] || "U"}</div>
         )}
       </button>
 
@@ -92,18 +86,12 @@ const ProfileDropdown = ({ user, onLogout }) => {
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             className="absolute right-0 mt-3 w-72 bg-[#18181b] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden"
           >
-            {/* Header */}
             <div className="p-4 border-b border-white/5 bg-white/5">
                <p className="text-white font-bold">{user.displayName}</p>
                <p className="text-xs text-gray-400 mt-0.5 truncate">{user.email}</p>
             </div>
-
-            {/* Menu Items */}
             <div className="p-2">
-               <button 
-                 onClick={onLogout}
-                 className="w-full flex items-center gap-3 px-3 py-2.5 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-sm font-bold"
-               >
+               <button onClick={onLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-sm font-bold">
                  <LogOut size={16} /> Log Out
                </button>
             </div>
@@ -117,31 +105,14 @@ const ProfileDropdown = ({ user, onLogout }) => {
 // --- 1. LOGIN SCREEN ---
 const LoginScreen = () => {
   const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Error logging in", error);
-      alert("Login failed: " + error.message);
-    }
+    try { await signInWithPopup(auth, googleProvider); } catch (error) { alert("Login failed: " + error.message); }
   };
-
   return (
     <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6">
-      <div className="mb-8 p-6 bg-violet-600/20 rounded-full animate-pulse">
-        <Zap size={64} className="text-violet-500" />
-      </div>
-      <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">
-        JEEPlanet <span className="text-violet-500">Pro</span>
-      </h1>
-      <p className="text-gray-400 mb-8 max-w-md">
-        Sync your syllabus, track your streak, and analyze mock tests across all your devices.
-      </p>
-      <button 
-        onClick={handleLogin}
-        className="px-8 py-4 bg-white text-black font-bold rounded-xl flex items-center gap-3 hover:bg-gray-200 transition-transform active:scale-95 shadow-xl shadow-white/10"
-      >
-        <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" />
-        Continue with Google
+      <div className="mb-8 p-6 bg-violet-600/20 rounded-full animate-pulse"><Zap size={64} className="text-violet-500" /></div>
+      <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">JEEPlanet <span className="text-violet-500">Pro</span></h1>
+      <button onClick={handleLogin} className="px-8 py-4 bg-white text-black font-bold rounded-xl flex items-center gap-3 hover:bg-gray-200 transition-transform active:scale-95 shadow-xl shadow-white/10">
+        <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" /> Continue with Google
       </button>
     </div>
   );
@@ -161,15 +132,9 @@ const FocusTimer = ({ data, onSaveSession }) => {
       interval = setInterval(() => {
         setTimeLeft(prev => {
            if (mode === 'timer') {
-             if (prev <= 0) {
-                setIsActive(false);
-                alert("Timer Finished!");
-                return 0;
-             }
+             if (prev <= 0) { setIsActive(false); alert("Timer Finished!"); return 0; }
              return prev - 1;
-           } else {
-             return prev + 1;
-           }
+           } else { return prev + 1; }
         });
       }, 1000);
     }
@@ -183,24 +148,13 @@ const FocusTimer = ({ data, onSaveSession }) => {
     return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const handleStart = () => {
-    if (mode === 'timer' && timeLeft === 0) {
-        setTimeLeft(initialTimerTime * 60);
-    }
-    setIsActive(true);
-  };
-
+  const handleStart = () => { if (mode === 'timer' && timeLeft === 0) setTimeLeft(initialTimerTime * 60); setIsActive(true); };
   const handleStop = () => {
     setIsActive(false);
     let timeSpentSeconds = mode === 'stopwatch' ? timeLeft : (initialTimerTime * 60) - timeLeft;
     if (timeSpentSeconds > 60) {
-        if(window.confirm(`Save ${Math.floor(timeSpentSeconds/60)} minutes of study?`)) {
-            onSaveSession(selectedSub, timeSpentSeconds);
-            setTimeLeft(0);
-        }
-    } else {
-        setTimeLeft(0);
-    }
+        if(window.confirm(`Save ${Math.floor(timeSpentSeconds/60)} minutes of study?`)) { onSaveSession(selectedSub, timeSpentSeconds); setTimeLeft(0); }
+    } else { setTimeLeft(0); }
   };
 
   const today = new Date().toISOString().split('T')[0];
@@ -213,50 +167,30 @@ const FocusTimer = ({ data, onSaveSession }) => {
       <div className="absolute top-0 left-0 z-10">
           <div className="bg-[#18181b] border border-white/10 rounded-full py-2 px-4 flex items-center gap-3 w-64 shadow-lg">
              <div className="flex flex-col flex-1">
-                <div className="flex justify-between text-[10px] uppercase font-bold text-gray-400 mb-1">
-                    <span>Daily Goal</span>
-                    <span>{Math.round(todayMins/60)}h / {data.dailyGoal}h</span>
-                </div>
-                <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-violet-500 transition-all duration-500" style={{width: `${percent}%`}}></div>
-                </div>
+                <div className="flex justify-between text-[10px] uppercase font-bold text-gray-400 mb-1"><span>Daily Goal</span><span>{Math.round(todayMins/60)}h / {data.dailyGoal}h</span></div>
+                <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-violet-500 transition-all duration-500" style={{width: `${percent}%`}}></div></div>
              </div>
           </div>
       </div>
-
       <div className="flex-1 flex flex-col items-center justify-center gap-8">
          <div className="flex bg-white/5 p-1 rounded-lg">
              <button onClick={() => { setMode('stopwatch'); setTimeLeft(0); setIsActive(false); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'stopwatch' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Stopwatch</button>
              <button onClick={() => { setMode('timer'); setTimeLeft(initialTimerTime*60); setIsActive(false); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'timer' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Timer</button>
          </div>
-
          <div className="text-center">
-             <div className="text-[8rem] md:text-[10rem] font-bold font-mono tracking-tighter leading-none text-white tabular-nums drop-shadow-2xl">
-                 {formatTime(timeLeft)}
-             </div>
-             
-             {mode === 'timer' && !isActive && (
-                 <div className="mt-4 flex items-center justify-center gap-2">
-                     <span className="text-gray-400">Set Minutes:</span>
-                     <input type="number" value={initialTimerTime} onChange={(e) => { const val = parseInt(e.target.value) || 0; setInitialTimerTime(val); setTimeLeft(val * 60); }} className="bg-white/10 border border-white/10 rounded px-2 py-1 w-20 text-center text-white font-bold" />
-                 </div>
-             )}
+             <div className="text-[8rem] md:text-[10rem] font-bold font-mono tracking-tighter leading-none text-white tabular-nums drop-shadow-2xl">{formatTime(timeLeft)}</div>
+             {mode === 'timer' && !isActive && (<div className="mt-4 flex items-center justify-center gap-2"><span className="text-gray-400">Set Minutes:</span><input type="number" value={initialTimerTime} onChange={(e) => { const val = parseInt(e.target.value) || 0; setInitialTimerTime(val); setTimeLeft(val * 60); }} className="bg-white/10 border border-white/10 rounded px-2 py-1 w-20 text-center text-white font-bold" /></div>)}
          </div>
-
          <div className="bg-[#18181b] border border-white/10 p-2 rounded-2xl flex items-center gap-4 shadow-2xl">
             <select className="appearance-none bg-[#27272a] hover:bg-[#3f3f46] text-white py-3 pl-4 pr-8 rounded-xl font-bold outline-none cursor-pointer transition-colors" value={selectedSub} onChange={(e) => setSelectedSub(e.target.value)} disabled={isActive}>
               {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-
             {!isActive ? (
                 <button onClick={handleStart} className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Play size={20} fill="currentColor" /> {timeLeft > 0 && mode === 'timer' && timeLeft < initialTimerTime*60 ? "Resume" : "Start"}</button>
             ) : (
                 <button onClick={() => setIsActive(false)} className="px-8 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Pause size={20} fill="currentColor" /> Pause</button>
             )}
-
-            {(timeLeft > 0 || isActive) && (
-                 <button onClick={handleStop} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors border border-red-500/20"><StopCircle size={20} /></button>
-            )}
+            {(timeLeft > 0 || isActive) && <button onClick={handleStop} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors border border-red-500/20"><StopCircle size={20} /></button>}
          </div>
       </div>
     </div>
@@ -297,14 +231,7 @@ const PhysicsKPP = ({ data, setData }) => {
                      <button onClick={addKPP} className="ml-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold">Add KPP</button>
                 </div>
             </GlassCard>
-            {graphData.length > 0 && (
-                <GlassCard className="h-[300px]">
-                    <h3 className="text-white font-bold mb-4 flex items-center gap-2"><TrendingUp size={18}/> Performance (Last 7)</h3>
-                    <ResponsiveContainer width="100%" height="90%">
-                        <BarChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Bar dataKey="percentage" fill="#8b5cf6" radius={[4,4,0,0]} name="Score %" /></BarChart>
-                    </ResponsiveContainer>
-                </GlassCard>
-            )}
+            {graphData.length > 0 && (<GlassCard className="h-[300px]"><ResponsiveContainer width="100%" height="90%"><BarChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Bar dataKey="percentage" fill="#8b5cf6" radius={[4,4,0,0]} name="Score %" /></BarChart></ResponsiveContainer></GlassCard>)}
             <div className="grid gap-3">{(data.kppList || []).slice().reverse().map(kpp => (<div key={kpp.id} className="bg-[#121212] border border-white/10 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex-1"><div className="flex items-center gap-3"><span className="font-bold text-white text-lg">{kpp.name}</span><span className="text-xs text-gray-500 px-2 py-1 bg-white/5 rounded">{kpp.chapter}</span></div><div className="flex gap-4 mt-2 text-sm"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.attempted} onChange={(e) => updateKPP(kpp.id, 'attempted', e.target.checked)} className="accent-purple-500"/> <span className={kpp.attempted ? "text-purple-400" : "text-gray-500"}>Attempted</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.corrected} onChange={(e) => updateKPP(kpp.id, 'corrected', e.target.checked)} className="accent-green-500"/> <span className={kpp.corrected ? "text-green-400" : "text-gray-500"}>Corrected</span></label></div></div><div className="flex items-center gap-4"><div className="text-right"><div className="text-white font-bold text-xl">{kpp.myScore} <span className="text-gray-500 text-sm">/ {kpp.totalScore}</span></div><div className="text-xs text-gray-500">{kpp.totalScore > 0 ? Math.round((kpp.myScore/kpp.totalScore)*100) : 0}%</div></div><button onClick={() => deleteKPP(kpp.id)} className="text-gray-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>))}</div>
         </div>
     );
@@ -471,7 +398,35 @@ const MockTestTracker = ({ data, setData }) => {
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex justify-between items-center gap-4"><div><h1 className="text-3xl font-bold text-white mb-2">Mock Test Analysis</h1><p className="text-gray-400">Scores by Subject (Stacked)</p></div><div className="flex gap-2">{['All', 'Mains', 'Advanced'].map(t => (<button key={t} onClick={() => setFilterType(t)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${filterType===t ? 'bg-violet-600 text-white border-violet-600' : 'border-white/10 text-gray-400'}`}>{t}</button>))}</div><button onClick={() => setIsAdding(!isAdding)} className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold flex items-center gap-2">{isAdding ? <X size={18}/> : <Plus size={18}/>} {isAdding ? 'Cancel' : 'Log Test'}</button></div>
       {isAdding && (<GlassCard className="border-t-4 border-t-violet-500"><div className="flex gap-4 mb-6">{['Mains', 'Advanced'].map(t => (<label key={t} className="flex items-center gap-2 cursor-pointer"><input type="radio" className="accent-violet-500" checked={testType === t} onChange={() => setTestType(t)} /><span className={testType === t ? 'text-white font-bold' : 'text-gray-400'}>JEE {t}</span></label>))}</div><div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end"><div className="col-span-2 space-y-2"><label className="text-xs text-gray-400 font-bold uppercase">Name</label><input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.name} onChange={e => setNewTest({...newTest, name: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-gray-400 font-bold uppercase">Date</label><input type="date" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.date} onChange={e => setNewTest({...newTest, date: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-violet-400 font-bold uppercase">Physics</label><input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.p} onChange={e => setNewTest({...newTest, p: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-green-400 font-bold uppercase">Chem</label><input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.c} onChange={e => setNewTest({...newTest, c: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-blue-400 font-bold uppercase">Maths</label><input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.m} onChange={e => setNewTest({...newTest, m: e.target.value})} /></div></div>{testType === 'Advanced' && <div className="mt-4"><input type="number" placeholder="Total Max Marks (e.g. 360)" className="bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.maxMarks} onChange={e => setNewTest({...newTest, maxMarks: e.target.value})} /></div>}<button onClick={addTest} className="mt-6 w-full py-3 font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700">Save Score</button></GlassCard>)}
+      
+      {/* GRAPH SECTION */}
       {sortedTests.length > 0 ? (<GlassCard className="h-[400px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={sortedTests} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Legend iconType="circle" /><Bar dataKey="p" name="Physics" stackId="a" fill="#8b5cf6" barSize={40} radius={[0,0,4,4]} /><Bar dataKey="c" name="Chemistry" stackId="a" fill="#10b981" barSize={40} /><Bar dataKey="m" name="Maths" stackId="a" fill="#3b82f6" barSize={40} radius={[4,4,0,0]} /></BarChart></ResponsiveContainer></GlassCard>) : <div className="text-center py-10 text-gray-500">No tests logged.</div>}
+      
+      {/* LIST SECTION (Restored) */}
+      <div className="grid gap-3">
+        {sortedTests.slice().reverse().map(test => (
+          <div key={test.id} className="group bg-[#121212] border border-white/10 p-4 rounded-xl flex items-center justify-between hover:border-white/20 transition">
+             <div className="flex gap-4 items-center">
+                <div className={`w-1 h-12 rounded-full ${test.type === 'Advanced' ? 'bg-orange-500' : 'bg-violet-500'}`}></div>
+                <div>
+                    <div className="flex items-center gap-3">
+                       <h3 className="font-bold text-white">{test.name}</h3>
+                       <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${test.type === 'Advanced' ? 'bg-orange-500/20 text-orange-400' : 'bg-violet-500/20 text-violet-400'}`}>{test.type || 'Mains'}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">{test.date}</div>
+                    <div className="flex gap-4 mt-2 text-sm"><span className="text-violet-400">P: {test.p}</span><span className="text-green-400">C: {test.c}</span><span className="text-blue-400">M: {test.m}</span></div>
+                </div>
+             </div>
+             <div className="flex items-center gap-6">
+                <div className="text-right">
+                   <div className="text-2xl font-bold text-white">{test.total} <span className="text-sm text-gray-500 font-normal">/ {test.maxMarks || 300}</span></div>
+                   <div className="text-xs text-gray-500 uppercase">{Math.round((test.total / (test.maxMarks || 300)) * 100)}%</div>
+                </div>
+                <button onClick={() => deleteTest(test.id)} className="p-2 text-gray-600 hover:text-red-500 transition" title="Delete Test Record"><Trash2 size={20} /></button>
+             </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -543,7 +498,6 @@ export default function App() {
       </aside>
 
       <main className="md:ml-20 flex-1 p-6 md:p-10 pb-24 h-screen overflow-y-auto">
-        {/* GLOBAL HEADER WITH PROFILE */}
         <div className="flex justify-between items-center mb-8 sticky top-0 bg-[#09090b]/90 backdrop-blur-md z-30 py-4 -mt-4 border-b border-white/5">
            <h2 className="text-2xl font-bold text-gray-200 capitalize flex items-center gap-2">
              {view === 'kpp' ? 'Physics KPP' : view}
