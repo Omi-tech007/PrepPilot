@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, BookOpen, Zap, Flame, Trophy, 
   Play, Pause, CheckCircle, X, ChevronRight, 
-  Plus, Trash2, FileText, TrendingUp
+  Plus, Trash2, FileText, TrendingUp, LogOut, User
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -11,13 +11,18 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// --- FIREBASE IMPORTS ---
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { auth, googleProvider, db } from "./firebase"; 
+
 /**
- * JEE TRACKER PRO - v6.0 (Mock Tests & Analytics Update)
+ * JEE TRACKER PRO - v7.0 (Google Auth & Cloud Sync)
  */
 
 // --- CONSTANTS ---
 const SUBJECTS = ["Physics", "Maths", "Organic Chem", "Inorganic Chem", "Physical Chem"];
-const COLORS = ['#8b5cf6', '#3b82f6', '#10b981']; // Violet (P), Blue (M), Emerald (C)
+const COLORS = ['#8b5cf6', '#3b82f6', '#10b981']; 
 
 const INITIAL_DATA = {
   notepad: "",
@@ -27,14 +32,13 @@ const INITIAL_DATA = {
     ...acc,
     [sub]: { chapters: [], timeSpent: 0 }
   }), {}),
-  mockTests: [], // New: Stores test history
+  mockTests: [],
   history: {}, 
   xp: 0, 
   darkMode: true
 };
 
 // --- UTILITY COMPONENTS ---
-
 const GlassCard = ({ children, className = "", hover = false }) => (
   <motion.div 
     whileHover={hover ? { scale: 1.01, backgroundColor: "rgba(255,255,255,0.08)" } : {}}
@@ -44,7 +48,40 @@ const GlassCard = ({ children, className = "", hover = false }) => (
   </motion.div>
 );
 
-// --- 1. ZEN FOCUS MODE ---
+// --- 1. LOGIN SCREEN ---
+const LoginScreen = () => {
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Error logging in", error);
+      alert("Login failed: " + error.message);
+    }
+  };
+
+  return (
+    <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6">
+      <div className="mb-8 p-6 bg-violet-600/20 rounded-full animate-pulse">
+        <Zap size={64} className="text-violet-500" />
+      </div>
+      <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">
+        JEE Planner <span className="text-violet-500">Pro</span>
+      </h1>
+      <p className="text-gray-400 mb-8 max-w-md">
+        Sync your syllabus, track your streak, and analyze mock tests across all your devices.
+      </p>
+      <button 
+        onClick={handleLogin}
+        className="px-8 py-4 bg-white text-black font-bold rounded-xl flex items-center gap-3 hover:bg-gray-200 transition-transform active:scale-95 shadow-xl shadow-white/10"
+      >
+        <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" />
+        Continue with Google
+      </button>
+    </div>
+  );
+};
+
+// --- 2. ZEN FOCUS MODE ---
 const ZenTimer = ({ data, onSaveSession, onExit }) => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isActive, setIsActive] = useState(false);
@@ -125,7 +162,7 @@ const ZenTimer = ({ data, onSaveSession, onExit }) => {
   );
 };
 
-// --- 2. MOCK TEST TRACKER (NEW) ---
+// --- 3. MOCK TEST TRACKER ---
 const MockTestTracker = ({ data, setData }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [newTest, setNewTest] = useState({ name: '', date: '', p: '', c: '', m: '' });
@@ -149,7 +186,6 @@ const MockTestTracker = ({ data, setData }) => {
     }
   };
 
-  // Sort tests by date for the chart
   const sortedTests = [...(data.mockTests || [])].sort((a,b) => new Date(a.date) - new Date(b.date));
 
   return (
@@ -197,7 +233,6 @@ const MockTestTracker = ({ data, setData }) => {
         </GlassCard>
       )}
 
-      {/* CHART SECTION */}
       {sortedTests.length > 0 ? (
         <GlassCard className="h-[350px]">
            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><TrendingUp size={20}/> Performance Trend</h3>
@@ -221,7 +256,6 @@ const MockTestTracker = ({ data, setData }) => {
         </div>
       )}
 
-      {/* TEST HISTORY LIST */}
       <div className="grid grid-cols-1 gap-3">
         {sortedTests.slice().reverse().map(test => (
           <div key={test.id} className="group bg-[#121212] border border-white/10 p-4 rounded-xl flex items-center justify-between hover:border-white/20 transition">
@@ -252,7 +286,7 @@ const MockTestTracker = ({ data, setData }) => {
   );
 };
 
-// --- 3. SYLLABUS COMPONENT ---
+// --- 4. SYLLABUS COMPONENT ---
 const Syllabus = ({ data, setData }) => {
   const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
   const [gradeView, setGradeView] = useState('11');
@@ -386,8 +420,8 @@ const ChapterItem = ({ chapter, onUpdate, onDelete }) => {
   );
 };
 
-// --- 4. DASHBOARD ---
-const Dashboard = ({ data, setData, startFocus }) => {
+// --- 5. DASHBOARD ---
+const Dashboard = ({ data, setData, startFocus, user }) => {
   const today = new Date().toISOString().split('T')[0];
   const todayMins = data.history?.[today] || 0;
   const xp = data.xp || 0;
@@ -395,7 +429,6 @@ const Dashboard = ({ data, setData, startFocus }) => {
   const nextLevelXP = (level + 1) * 1000;
   const levelProgress = Math.round((xp / nextLevelXP) * 100);
 
-  // --- STREAK LOGIC ---
   const getStreak = () => {
     let streak = 0;
     const history = data.history || {};
@@ -426,18 +459,13 @@ const Dashboard = ({ data, setData, startFocus }) => {
     return chartData;
   };
 
-  // --- PIE CHART DATA GENERATOR ---
   const getSubjectDistribution = () => {
     const pTime = data.subjects["Physics"]?.timeSpent || 0;
     const mTime = data.subjects["Maths"]?.timeSpent || 0;
-    // Aggregate all Chemistries
     const cTime = (data.subjects["Organic Chem"]?.timeSpent || 0) + 
                   (data.subjects["Inorganic Chem"]?.timeSpent || 0) + 
                   (data.subjects["Physical Chem"]?.timeSpent || 0);
-    
-    // Prevent empty chart
     if (pTime + cTime + mTime === 0) return [{name: 'No Data', value: 1}];
-
     return [
       { name: 'Physics', value: pTime },
       { name: 'Maths', value: mTime },
@@ -473,9 +501,9 @@ const Dashboard = ({ data, setData, startFocus }) => {
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-2">
-              Good afternoon, Aspirant! <span className="animate-pulse">👋</span>
+              Hello, {user?.displayName?.split(' ')[0] || 'Aspirant'}! <span className="animate-pulse">👋</span>
             </h1>
-            <p className="text-gray-400">Ready for another productive study session?</p>
+            <p className="text-gray-400">Your data is syncing with the cloud.</p>
             <div className={`mt-4 flex items-center gap-2 text-sm font-bold ${getStreak() > 0 ? 'text-orange-500' : 'text-gray-500'}`}>
                <Flame size={16} fill="currentColor" /> {getStreak()} day streak!
             </div>
@@ -606,16 +634,47 @@ const Dashboard = ({ data, setData, startFocus }) => {
 
 // --- MAIN APP SHELL ---
 export default function App() {
-  const [data, setData] = useState(() => {
-    const saved = localStorage.getItem('jeeTrackerPro');
-    return saved ? JSON.parse(saved) : INITIAL_DATA;
-  });
+  const [user, setUser] = useState(null);
+  const [data, setData] = useState(INITIAL_DATA);
   const [view, setView] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
 
+  // 1. Auth Listener
   useEffect(() => {
-    localStorage.setItem('jeeTrackerPro', JSON.stringify(data));
-    document.documentElement.classList.add('dark');
-  }, [data]);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // Fetch data from Firestore
+        const docRef = doc(db, "users", currentUser.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setData(docSnap.data());
+        } else {
+          // Initialize new user in DB
+          await setDoc(docRef, INITIAL_DATA);
+          setData(INITIAL_DATA);
+        }
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Auto-Save to Firestore when 'data' changes
+  useEffect(() => {
+    if (user && !loading) {
+      const saveData = async () => {
+        try {
+          await setDoc(doc(db, "users", user.uid), data);
+        } catch (err) {
+          console.error("Error saving data:", err);
+        }
+      };
+      // Simple debounce to prevent too many writes
+      const timeoutId = setTimeout(saveData, 1000); 
+      return () => clearTimeout(timeoutId);
+    }
+  }, [data, user, loading]);
 
   const saveSession = (subject, seconds) => {
     const mins = parseFloat((seconds/60).toFixed(2));
@@ -637,6 +696,19 @@ export default function App() {
     });
     setView('dashboard');
   };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setData(INITIAL_DATA);
+  };
+
+  if (loading) return (
+    <div className="h-screen w-full bg-[#09090b] flex items-center justify-center text-white">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500"></div>
+    </div>
+  );
+
+  if (!user) return <LoginScreen />;
 
   return (
     <div className="min-h-screen bg-[#09090b] text-gray-200 font-sans selection:bg-violet-500/30">
@@ -660,10 +732,16 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        <div className="mt-auto">
+          <button onClick={handleLogout} className="p-3 text-gray-600 hover:text-red-500 transition" title="Logout">
+            <LogOut size={24} />
+          </button>
+        </div>
       </aside>
 
       <main className="md:ml-20 p-6 md:p-10 pb-24">
-        {view === 'dashboard' && <Dashboard data={data} setData={setData} startFocus={() => setView('zen')} />}
+        {view === 'dashboard' && <Dashboard data={data} setData={setData} startFocus={() => setView('zen')} user={user} />}
         {view === 'syllabus' && <Syllabus data={data} setData={setData} />}
         {view === 'mocks' && <MockTestTracker data={data} setData={setData} />}
       </main>
@@ -673,6 +751,7 @@ export default function App() {
         <button onClick={() => setView('zen')} className="bg-white text-black p-4 rounded-full -mt-8 shadow-lg shadow-white/20"><Play fill="black" /></button>
         <button onClick={() => setView('syllabus')} className={view === 'syllabus' ? 'text-violet-500' : 'text-gray-500'}><BookOpen /></button>
         <button onClick={() => setView('mocks')} className={view === 'mocks' ? 'text-violet-500' : 'text-gray-500'}><FileText /></button>
+        <button onClick={handleLogout} className="text-gray-500 hover:text-red-500"><LogOut /></button>
       </div>
     </div>
   );
