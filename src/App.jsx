@@ -17,7 +17,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEEPLANET PRO - v10.0 (Restored & Polished)
+ * JEEPLANET PRO - v10.1 (Clean - No Custom Logo)
  */
 
 // --- CONSTANTS ---
@@ -62,13 +62,9 @@ const LoginScreen = () => {
   return (
     <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6">
       
-      {/* --- CUSTOM LOGO HERE --- */}
-      <div className="mb-8">
-        <img 
-          src="/logo.png" 
-          alt="JEEPlanet Logo" 
-          className="h-32 w-32 object-contain drop-shadow-[0_0_15px_rgba(139,92,246,0.5)]" 
-        />
+      {/* Reverted to Built-in Icon */}
+      <div className="mb-8 p-6 bg-violet-600/20 rounded-full animate-pulse">
+        <Zap size={64} className="text-violet-500" />
       </div>
 
       <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">
@@ -788,9 +784,9 @@ export default function App() {
 
       <aside className="fixed left-0 top-0 h-full w-20 bg-[#09090b] border-r border-white/10 flex flex-col items-center py-8 z-40 hidden md:flex">
         
-        {/* --- SIDEBAR LOGO --- */}
-        <div className="mb-12 p-2 bg-white/5 rounded-2xl border border-white/10 shadow-lg">
-           <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
+        {/* Reverted to Built-in Icon */}
+        <div className="mb-12 p-3 bg-violet-600 rounded-xl shadow-lg shadow-violet-600/20">
+          <Zap size={24} className="text-white" />
         </div>
 
         <nav className="flex flex-col gap-8 w-full">
