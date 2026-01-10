@@ -1,11 +1,9 @@
-// Import the functions you need from the SDKs you need
+// src/firebase.js
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// --- PASTE YOUR KEYS INSIDE THIS BLOCK ---
 const firebaseConfig = {
   apiKey: "AIzaSyBDuxUxmldUoef45N-3mG_hdMauFgMNSq4",
   authDomain: "jee-planner-97951.firebaseapp.com",
@@ -16,6 +14,10 @@ const firebaseConfig = {
   measurementId: "G-Q1840GE3PW"
 };
 
-// Initialize Firebase
+// --- THIS IS THE PART THAT WAS MISSING ---
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+
+// We need to 'export' these so App.js can use them:
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+export const db = getFirestore(app);
