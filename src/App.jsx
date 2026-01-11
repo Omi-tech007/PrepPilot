@@ -5,7 +5,7 @@ import {
   Plus, Trash2, FileText, TrendingUp, LogOut,
   Timer as TimerIcon, StopCircle, Target, User,
   Settings, Image as ImageIcon, ExternalLink, Maximize, Minimize,
-  PieChart as PieChartIcon, Upload, Bell, Calendar, Edit3
+  PieChart as PieChartIcon, Upload, Bell, Calendar, Edit3, Mail, Lock
 } from 'lucide-react';
 import { 
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -15,12 +15,19 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- FIREBASE IMPORTS ---
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification
+} from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEEPLANET PRO - v23.0 (Fixed Build Error: Email Verification inside App)
+ * JEEPLANET PRO - v24.0 (Email Login & Verification)
  */
 
 // --- CONSTANTS & CONFIG ---
@@ -136,12 +143,12 @@ const ProfileDropdown = ({ user, onLogout, onChangeExam }) => {
     <div className="relative" ref={dropdownRef}>
       <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 p-1 rounded-full hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
         <div className="hidden md:block text-right mr-1">
-          <p className="text-xs font-bold text-white leading-none">{user.displayName?.split(' ')[0]}</p>
+          <p className="text-xs font-bold text-white leading-none">{user.displayName?.split(' ')[0] || user.email?.split('@')[0]}</p>
         </div>
         {user.photoURL ? (
           <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-violet-500/50" />
         ) : (
-          <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold border-2 border-violet-400 text-xs">{user.displayName?.[0] || "U"}</div>
+          <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold border-2 border-violet-400 text-xs uppercase">{user.email?.[0] || "U"}</div>
         )}
       </button>
 
@@ -154,7 +161,7 @@ const ProfileDropdown = ({ user, onLogout, onChangeExam }) => {
             className="absolute right-0 mt-2 w-60 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
           >
             <div className="p-3 border-b border-white/5 bg-white/5">
-               <p className="text-white font-bold text-sm">{user.displayName}</p>
+               <p className="text-white font-bold text-sm">{user.displayName || "User"}</p>
                <p className="text-[10px] text-gray-400 mt-0.5 truncate">{user.email}</p>
             </div>
             <div className="p-1 space-y-1">
@@ -197,18 +204,81 @@ const ExamSelectionScreen = ({ onSelect }) => {
   );
 };
 
-// --- LOGIN SCREEN ---
+// --- LOGIN SCREEN (UPDATED: Email/Pass + Google) ---
 const LoginScreen = () => {
-  const handleLogin = async () => {
-    try { await signInWithPopup(auth, googleProvider); } catch (error) { alert("Login failed: " + error.message); }
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGoogleLogin = async () => {
+    try { await signInWithPopup(auth, googleProvider); } catch (error) { setError(error.message); }
   };
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await sendEmailVerification(userCredential.user);
+        alert("Verification email sent! Please check your inbox.");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+    setIsLoading(false);
+  };
+
   return (
-    <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6">
-      <div className="mb-8 p-6 bg-violet-600/20 rounded-full animate-pulse"><Zap size={64} className="text-violet-500" /></div>
-      <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">JEEPlanet <span className="text-violet-500">Pro</span></h1>
-      <button onClick={handleLogin} className="px-8 py-4 bg-white text-black font-bold rounded-xl flex items-center gap-3 hover:bg-gray-200 transition-transform active:scale-95 shadow-xl shadow-white/10">
-        <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" /> Continue with Google
-      </button>
+    <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-md bg-[#121212] border border-white/10 rounded-3xl p-8 shadow-2xl">
+        <div className="text-center mb-8">
+          <div className="inline-flex p-4 bg-violet-600/20 rounded-full mb-4 animate-pulse"><Zap size={40} className="text-violet-500" /></div>
+          <h1 className="text-3xl font-bold text-white">JEEPlanet <span className="text-violet-500">Pro</span></h1>
+          <p className="text-gray-400 text-sm mt-2">{isLogin ? "Welcome back, Aspirant!" : "Start your journey today."}</p>
+        </div>
+
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus-within:border-violet-500 transition-colors">
+              <Mail size={20} className="text-gray-400" />
+              <input type="email" placeholder="Email Address" required className="bg-transparent outline-none text-white w-full placeholder-gray-500" value={email} onChange={e => setEmail(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus-within:border-violet-500 transition-colors">
+              <Lock size={20} className="text-gray-400" />
+              <input type="password" placeholder="Password" required className="bg-transparent outline-none text-white w-full placeholder-gray-500" value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+          </div>
+
+          {error && <p className="text-red-400 text-xs text-center">{error}</p>}
+
+          <button type="submit" disabled={isLoading} className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-all active:scale-95 shadow-lg shadow-violet-600/20 disabled:opacity-50">
+            {isLoading ? "Processing..." : (isLogin ? "Login" : "Create Account")}
+          </button>
+        </form>
+
+        <div className="flex items-center gap-4 my-6">
+          <div className="h-px bg-white/10 flex-1"></div>
+          <span className="text-xs text-gray-500 font-bold uppercase">Or continue with</span>
+          <div className="h-px bg-white/10 flex-1"></div>
+        </div>
+
+        <button onClick={handleGoogleLogin} className="w-full py-3 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-3 hover:bg-gray-200 transition-transform active:scale-95">
+          <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" /> Google
+        </button>
+
+        <p className="text-center text-gray-400 text-sm mt-8">
+          {isLogin ? "Don't have an account?" : "Already have an account?"} 
+          <button onClick={() => setIsLogin(!isLogin)} className="text-violet-400 font-bold ml-2 hover:underline">
+            {isLogin ? "Sign Up" : "Login"}
+          </button>
+        </p>
+      </div>
     </div>
   );
 };
@@ -248,7 +318,7 @@ const PhysicsKPP = ({ data, setData }) => {
     return (<div className="space-y-6 max-w-5xl mx-auto"><h1 className="text-3xl font-bold text-white mb-2">Physics KPP Tracker</h1><GlassCard className="border-t-4 border-t-purple-500"><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><input type="text" placeholder="KPP Name (e.g. Rotational-01)" className="bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newKPP.name} onChange={e => setNewKPP({...newKPP, name: e.target.value})} /><select className="bg-[#18181b] border border-white/10 rounded-lg p-3 text-white outline-none" value={newKPP.chapter} onChange={e => setNewKPP({...newKPP, chapter: e.target.value})}><option value="">Select Physics Chapter</option>{physicsChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div><div className="flex flex-wrap gap-4 items-center"><div className="flex items-center gap-2 text-gray-400"><input type="checkbox" className="w-5 h-5 accent-purple-500" checked={newKPP.attempted} onChange={e => setNewKPP({...newKPP, attempted: e.target.checked})} /> Attempted</div><div className="flex items-center gap-2 text-gray-400"><input type="checkbox" className="w-5 h-5 accent-green-500" checked={newKPP.corrected} onChange={e => setNewKPP({...newKPP, corrected: e.target.checked})} /> Corrected</div><div className="flex items-center gap-2"><input type="number" placeholder="My Score" className="w-24 bg-white/5 border border-white/10 rounded-lg p-2 text-white" value={newKPP.myScore} onChange={e => setNewKPP({...newKPP, myScore: parseFloat(e.target.value)})} /><span className="text-gray-500">/</span><input type="number" placeholder="Total" className="w-24 bg-white/5 border border-white/10 rounded-lg p-2 text-white" value={newKPP.totalScore} onChange={e => setNewKPP({...newKPP, totalScore: parseFloat(e.target.value)})} /></div><button onClick={addKPP} className="ml-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold">Add KPP</button></div></GlassCard>{graphData.length > 0 && (<GlassCard className="h-[300px]"><ResponsiveContainer width="100%" height="90%"><BarChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Bar dataKey="percentage" fill="#8b5cf6" radius={[4,4,0,0]} name="Score %" /></BarChart></ResponsiveContainer></GlassCard>)}<div className="grid gap-3">{(data.kppList || []).slice().reverse().map(kpp => (<div key={kpp.id} className="bg-[#121212] border border-white/10 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex-1"><div className="flex items-center gap-3"><span className="font-bold text-white text-lg">{kpp.name}</span><span className="text-xs text-gray-500 px-2 py-1 bg-white/5 rounded">{kpp.chapter}</span></div><div className="flex gap-4 mt-2 text-sm"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.attempted} onChange={(e) => updateKPP(kpp.id, 'attempted', e.target.checked)} className="accent-purple-500"/> <span className={kpp.attempted ? "text-purple-400" : "text-gray-500"}>Attempted</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.corrected} onChange={(e) => updateKPP(kpp.id, 'corrected', e.target.checked)} className="accent-green-500"/> <span className={kpp.corrected ? "text-green-400" : "text-gray-500"}>Corrected</span></label></div></div><div className="flex items-center gap-4"><div className="text-right"><div className="text-white font-bold text-xl">{kpp.myScore} <span className="text-gray-500 text-sm">/ {kpp.totalScore}</span></div><div className="text-xs text-gray-500">{kpp.totalScore > 0 ? Math.round((kpp.myScore/kpp.totalScore)*100) : 0}%</div></div><button onClick={() => deleteKPP(kpp.id)} className="text-gray-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>))}</div></div>);
 };
 
-// --- 4. SYLLABUS & MOCKS (Updated) ---
+// --- 4. SYLLABUS & MOCKS (Unchanged) ---
 const Syllabus = ({ data, setData }) => {
   const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
   const [gradeView, setGradeView] = useState('11');
