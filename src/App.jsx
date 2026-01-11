@@ -20,7 +20,8 @@ import {
   signOut, 
   onAuthStateChanged, 
   createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword 
+  signInWithEmailAndPassword,
+  sendEmailVerification // <-- Add this
 } from "firebase/auth";
 
 import { doc, setDoc, getDoc } from "firebase/firestore";
@@ -685,6 +686,30 @@ export default function App() {
   if (loading) return <div className="h-screen bg-[#09090b] flex items-center justify-center text-white">Loading...</div>;
   if (!user) return <LoginScreen />;
   if (showExamSelect) return <ExamSelectionScreen onSelect={handleExamSelect} />;
+  
+const handleEmailSignup = async (email, password) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(userCredential.user); // Sends the actual email
+      await setDoc(doc(db, "users", userCredential.user.uid), INITIAL_DATA);
+      await signOut(auth); // Logs them out so they can't enter yet
+      alert("Account created! Please check your email for a verification link.");
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const handleEmailLogin = async (email, password) => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (!userCredential.user.emailVerified) {
+        alert("Please verify your email first! We sent a link to your inbox.");
+        await signOut(auth); // Kicks them back to login screen
+      }
+    } catch (error) {
+      alert(error.message);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#09090b] text-gray-200 font-sans selection:bg-violet-500/30 flex">
