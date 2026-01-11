@@ -14,20 +14,13 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 
-//--- FIREBASE IMPORTS ---
-import { 
-  signInWithPopup, 
-  signOut, 
-  onAuthStateChanged, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword,
-  sendEmailVerification // <-- Add this
-} from "firebase/auth";
-
+// --- FIREBASE IMPORTS ---
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, googleProvider, db } from "./firebase";
+import { auth, googleProvider, db } from "./firebase"; 
+
 /**
- * JEEPLANET PRO - v22.0 (Exam Selection, Heatmap, Countdown)
+ * JEEPLANET PRO - v23.0 (Fixed Build Error: Email Verification inside App)
  */
 
 // --- CONSTANTS & CONFIG ---
@@ -37,7 +30,7 @@ const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#ef4444'
 const EXAM_CONFIG = {
   "JEE Mains (Jan) 2027": { date: "2027-01-21", marks: 300 },
   "JEE Mains (April) 2027": { date: "2027-04-02", marks: 300 },
-  "JEE Advanced 2026": { date: "2026-05-15", marks: 0 }, // 0 = Custom
+  "JEE Advanced 2026": { date: "2026-05-15", marks: 0 }, 
   "JEE Advanced 2027": { date: "2027-05-15", marks: 0 },
   "BITSAT 2027": { date: "2027-04-15", marks: 390 },
   "NEET 2026": { date: "2026-05-05", marks: 720 },
@@ -58,8 +51,8 @@ const INITIAL_DATA = {
   xp: 0, 
   darkMode: true,
   bgImage: "",
-  selectedExam: null, // Stores exam name
-  examDate: null      // Stores target date (customizable)
+  selectedExam: null, 
+  examDate: null      
 };
 
 // --- UTILITY COMPONENTS ---
@@ -74,11 +67,9 @@ const GlassCard = ({ children, className = "", hover = false }) => (
 
 // --- HEATMAP COMPONENT ---
 const StudyHeatmap = ({ history }) => {
-  // Generate last 365 days
   const generateYearData = () => {
     const days = [];
     const today = new Date();
-    // Start 364 days ago
     const start = new Date();
     start.setDate(today.getDate() - 364);
 
@@ -88,14 +79,13 @@ const StudyHeatmap = ({ history }) => {
       const dateStr = d.toISOString().split('T')[0];
       const mins = history[dateStr] || 0;
       
-      // Determine intensity (0-4)
       let intensity = 0;
       if (mins > 0) intensity = 1;
       if (mins > 60) intensity = 2;
       if (mins > 180) intensity = 3;
       if (mins > 360) intensity = 4;
 
-      days.push({ date: dateStr, intensity, month: d.getMonth() });
+      days.push({ date: dateStr, intensity });
     }
     return days;
   };
@@ -106,9 +96,8 @@ const StudyHeatmap = ({ history }) => {
   return (
     <div className="w-full overflow-x-auto pb-2">
       <div className="flex gap-1 min-w-[800px]">
-         {/* We display columns of weeks approximately. For simplicity in React without a library, we render a flex grid */}
          <div className="grid grid-flow-col grid-rows-7 gap-1">
-            {data.map((day, i) => (
+            {data.map((day) => (
               <div 
                 key={day.date} 
                 title={`${day.date}: ${Math.round((history[day.date]||0)/60)}h`}
@@ -130,7 +119,7 @@ const StudyHeatmap = ({ history }) => {
   );
 };
 
-// --- PROFILE DROPDOWN (Updated with Exam Change) ---
+// --- PROFILE DROPDOWN ---
 const ProfileDropdown = ({ user, onLogout, onChangeExam }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -210,106 +199,21 @@ const ExamSelectionScreen = ({ onSelect }) => {
 
 // --- LOGIN SCREEN ---
 const LoginScreen = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false); // Toggle state
-
-  const handleGoogle = async () => {
-    try { await signInWithPopup(auth, googleProvider); } 
-    catch (error) { alert("Google Login failed: " + error.message); }
+  const handleLogin = async () => {
+    try { await signInWithPopup(auth, googleProvider); } catch (error) { alert("Login failed: " + error.message); }
   };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (isSignUp) {
-      handleEmailSignup(email, password);
-    } else {
-      handleEmailLogin(email, password); // Your existing login function
-    }
-  };
-
   return (
-    <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center p-6">
-      <div className="mb-8 p-6 bg-violet-600/20 rounded-full"><Zap size={48} className="text-violet-500" /></div>
-      
-      <h1 className="text-3xl font-bold text-white mb-2">
-        {isSignUp ? "Create Account" : "Welcome Back"}
-      </h1>
-      <p className="text-gray-500 mb-8">JEEPlanet Pro</p>
-
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3 w-80">
-        <input 
-          type="email" 
-          placeholder="Email Address" 
-          className="p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-violet-500"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input 
-          type="password" 
-          placeholder="Password" 
-          className="p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-violet-500"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit" className="py-3 bg-violet-600 text-white font-bold rounded-xl mt-2 hover:bg-violet-700 transition">
-          {isSignUp ? "Sign Up" : "Login"}
-        </button>
-      </form>
-
-      <button onClick={() => setIsSignUp(!isSignUp)} className="mt-4 text-sm text-gray-400 hover:text-white">
-        {isSignUp ? "Already have an account? Login" : "Don't have an account? Sign Up"}
-      </button>
-
-      <div className="flex items-center gap-4 w-80 my-6">
-        <div className="h-[1px] bg-white/10 flex-1"></div>
-        <span className="text-gray-600 text-xs font-bold">OR</span>
-        <div className="h-[1px] bg-white/10 flex-1"></div>
-      </div>
-
-      <button onClick={handleGoogle} className="w-80 py-3 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-3 hover:bg-gray-200 transition">
+    <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6">
+      <div className="mb-8 p-6 bg-violet-600/20 rounded-full animate-pulse"><Zap size={64} className="text-violet-500" /></div>
+      <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight">JEEPlanet <span className="text-violet-500">Pro</span></h1>
+      <button onClick={handleLogin} className="px-8 py-4 bg-white text-black font-bold rounded-xl flex items-center gap-3 hover:bg-gray-200 transition-transform active:scale-95 shadow-xl shadow-white/10">
         <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" /> Continue with Google
       </button>
     </div>
   );
 };
- const handleLogout = async () => { await signOut(auth); setData(INITIAL_DATA); };
-// This part goes inside your "App" function
-if (!user) {
-  return <LoginScreen />;
-}
 
-// NEW: Add this check right here
-if (!user.emailVerified) {
-  return (
-    <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6 text-white">
-      <div className="mb-6 p-6 bg-yellow-500/20 rounded-full">
-        <Bell size={48} className="text-yellow-500" />
-      </div>
-      <h1 className="text-3xl font-bold mb-4">Verify Your Email 📧</h1>
-      <p className="text-gray-400 max-w-md mb-8">
-        We've sent a link to <b>{user.email}</b>. Please click it to unlock your planner.
-      </p>
-      <button 
-        onClick={() => window.location.reload()} 
-        className="px-8 py-3 bg-violet-600 rounded-xl font-bold hover:bg-violet-700 transition"
-      >
-        I've verified it (Refresh)
-      </button>
-      <button 
-        onClick={() => signOut(auth)} 
-        className="mt-4 text-sm text-gray-500 hover:text-white underline"
-      >
-        Log out and try another email
-      </button>
-    </div>
-  );
-}
-// If they ARE verified, it will continue to the Dashboard automatically
-
-// --- FOCUS TIMER (Unchanged but included) ---
+// --- FOCUS TIMER ---
 const FocusTimer = ({ data, setData, onSaveSession }) => {
   const [mode, setMode] = useState('stopwatch'); const [timeLeft, setTimeLeft] = useState(0); const [initialTimerTime, setInitialTimerTime] = useState(60); const [isActive, setIsActive] = useState(false); const [selectedSub, setSelectedSub] = useState(SUBJECTS[0]); const [showSettings, setShowSettings] = useState(false); const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef(null); const canvasRef = useRef(null); const videoRef = useRef(null); const fileInputRef = useRef(null);
@@ -344,7 +248,7 @@ const PhysicsKPP = ({ data, setData }) => {
     return (<div className="space-y-6 max-w-5xl mx-auto"><h1 className="text-3xl font-bold text-white mb-2">Physics KPP Tracker</h1><GlassCard className="border-t-4 border-t-purple-500"><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><input type="text" placeholder="KPP Name (e.g. Rotational-01)" className="bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newKPP.name} onChange={e => setNewKPP({...newKPP, name: e.target.value})} /><select className="bg-[#18181b] border border-white/10 rounded-lg p-3 text-white outline-none" value={newKPP.chapter} onChange={e => setNewKPP({...newKPP, chapter: e.target.value})}><option value="">Select Physics Chapter</option>{physicsChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div><div className="flex flex-wrap gap-4 items-center"><div className="flex items-center gap-2 text-gray-400"><input type="checkbox" className="w-5 h-5 accent-purple-500" checked={newKPP.attempted} onChange={e => setNewKPP({...newKPP, attempted: e.target.checked})} /> Attempted</div><div className="flex items-center gap-2 text-gray-400"><input type="checkbox" className="w-5 h-5 accent-green-500" checked={newKPP.corrected} onChange={e => setNewKPP({...newKPP, corrected: e.target.checked})} /> Corrected</div><div className="flex items-center gap-2"><input type="number" placeholder="My Score" className="w-24 bg-white/5 border border-white/10 rounded-lg p-2 text-white" value={newKPP.myScore} onChange={e => setNewKPP({...newKPP, myScore: parseFloat(e.target.value)})} /><span className="text-gray-500">/</span><input type="number" placeholder="Total" className="w-24 bg-white/5 border border-white/10 rounded-lg p-2 text-white" value={newKPP.totalScore} onChange={e => setNewKPP({...newKPP, totalScore: parseFloat(e.target.value)})} /></div><button onClick={addKPP} className="ml-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold">Add KPP</button></div></GlassCard>{graphData.length > 0 && (<GlassCard className="h-[300px]"><ResponsiveContainer width="100%" height="90%"><BarChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Bar dataKey="percentage" fill="#8b5cf6" radius={[4,4,0,0]} name="Score %" /></BarChart></ResponsiveContainer></GlassCard>)}<div className="grid gap-3">{(data.kppList || []).slice().reverse().map(kpp => (<div key={kpp.id} className="bg-[#121212] border border-white/10 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex-1"><div className="flex items-center gap-3"><span className="font-bold text-white text-lg">{kpp.name}</span><span className="text-xs text-gray-500 px-2 py-1 bg-white/5 rounded">{kpp.chapter}</span></div><div className="flex gap-4 mt-2 text-sm"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.attempted} onChange={(e) => updateKPP(kpp.id, 'attempted', e.target.checked)} className="accent-purple-500"/> <span className={kpp.attempted ? "text-purple-400" : "text-gray-500"}>Attempted</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.corrected} onChange={(e) => updateKPP(kpp.id, 'corrected', e.target.checked)} className="accent-green-500"/> <span className={kpp.corrected ? "text-green-400" : "text-gray-500"}>Corrected</span></label></div></div><div className="flex items-center gap-4"><div className="text-right"><div className="text-white font-bold text-xl">{kpp.myScore} <span className="text-gray-500 text-sm">/ {kpp.totalScore}</span></div><div className="text-xs text-gray-500">{kpp.totalScore > 0 ? Math.round((kpp.myScore/kpp.totalScore)*100) : 0}%</div></div><button onClick={() => deleteKPP(kpp.id)} className="text-gray-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>))}</div></div>);
 };
 
-// --- 4. SYLLABUS & MOCKS (Updated with Exam Prefs) ---
+// --- 4. SYLLABUS & MOCKS (Updated) ---
 const Syllabus = ({ data, setData }) => {
   const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
   const [gradeView, setGradeView] = useState('11');
@@ -385,11 +289,9 @@ const ChapterItem = ({ subjectName, chapter, onUpdate, onDelete }) => {
 const MockTestTracker = ({ data, setData }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [filterType, setFilterType] = useState('All'); 
-  // Default to selected exam or fallback to Mains
   const [testType, setTestType] = useState(data.selectedExam || 'Mains');
   const [newTest, setNewTest] = useState({ name: '', date: '', p: '', c: '', m: '', maxMarks: 0, reminder: false });
 
-  // Update default max marks when adding new test
   useEffect(() => {
       if(isAdding && data.selectedExam) {
           const config = EXAM_CONFIG[data.selectedExam];
@@ -409,9 +311,7 @@ const MockTestTracker = ({ data, setData }) => {
     if (!newTest.name || !newTest.date) return;
     const p = parseFloat(newTest.p) || 0; const c = parseFloat(newTest.c) || 0; const m = parseFloat(newTest.m) || 0;
     const total = p + c + m;
-    // Use user entered max marks if provided, else default to 300
     const max = parseInt(newTest.maxMarks) || 300;
-    
     const testEntry = { id: Date.now(), type: testType, name: newTest.name, date: newTest.date, p, c, m, total, maxMarks: max, reminder: newTest.reminder };
     if(newTest.reminder) requestNotificationPermission();
     setData(prev => ({ ...prev, mockTests: [...(prev.mockTests || []), testEntry] }));
@@ -420,7 +320,6 @@ const MockTestTracker = ({ data, setData }) => {
   };
 
   const deleteTest = (id) => { if(window.confirm("Delete record?")) setData(prev => ({ ...prev, mockTests: prev.mockTests.filter(t => t.id !== id) })); };
-  // Filter logic can be improved to match dynamic exam names, simplistic for now
   const filteredTests = (data.mockTests || []).filter(t => { if (filterType === 'All') return true; return t.type.includes(filterType) || (filterType === 'Mains' && !t.type); });
   const sortedTests = [...filteredTests].sort((a,b) => new Date(a.date) - new Date(b.date));
 
@@ -721,29 +620,17 @@ export default function App() {
   if (!user) return <LoginScreen />;
   if (showExamSelect) return <ExamSelectionScreen onSelect={handleExamSelect} />;
 
-const handleEmailSignup = async (email, password) => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await sendEmailVerification(userCredential.user); // Sends the actual email
-      await setDoc(doc(db, "users", userCredential.user.uid), INITIAL_DATA);
-      await signOut(auth); // Logs them out so they can't enter yet
-      alert("Account created! Please check your email for a verification link.");
-    } catch (error) {
-      alert(error.message);
-    }
-  };
-
-  const handleEmailLogin = async (email, password) => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      if (!userCredential.user.emailVerified) {
-        alert("Please verify your email first! We sent a link to your inbox.");
-        await signOut(auth); // Kicks them back to login screen
-      }
-    } catch (error) {
-      alert(error.message);
-    }
-  };
+  if (!user.emailVerified) {
+    return (
+      <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center text-center p-6 text-white">
+        <div className="mb-6 p-6 bg-yellow-500/20 rounded-full"><Bell size={48} className="text-yellow-500" /></div>
+        <h1 className="text-3xl font-bold mb-4">Verify Your Email 📧</h1>
+        <p className="text-gray-400 max-w-md mb-8">We've sent a link to <b>{user.email}</b>. Please click it to unlock your planner.</p>
+        <button onClick={() => window.location.reload()} className="px-8 py-3 bg-violet-600 rounded-xl font-bold hover:bg-violet-700 transition">I've verified it (Refresh)</button>
+        <button onClick={() => signOut(auth)} className="mt-4 text-sm text-gray-500 hover:text-white underline">Log out and try another email</button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#09090b] text-gray-200 font-sans selection:bg-violet-500/30 flex">
@@ -791,17 +678,3 @@ const handleEmailSignup = async (email, password) => {
     </div>
   );
 }
-const handleEmailSignup = async (email, password) => {
-  try {
-    // This creates the user in Firebase Authentication
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const newUser = userCredential.user;
-
-    // This creates their empty "folder" in your database
-    await setDoc(doc(db, "users", newUser.uid), INITIAL_DATA);
-    
-    alert("Account created successfully! You are now logged in.");
-  } catch (error) {
-    alert("Sign Up Error: " + error.message);
-  }
-};
