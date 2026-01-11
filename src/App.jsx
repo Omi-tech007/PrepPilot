@@ -29,7 +29,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * PREPPILOT - v32.0 (Stable Release: Fixed Syntax & Layouts)
+ * PREPPILOT - v33.0 (Crash Fixed + Broad Sidebar Layout)
  */
 
 // --- CONSTANTS ---
@@ -61,6 +61,8 @@ const THEME_COLORS = [
 ];
 
 const getThemeStyles = (themeName) => {
+  // Fallback to Violet if themeName is undefined
+  const safeName = themeName || 'Violet';
   const map = {
     'Teal': { bg: 'bg-teal-600', hover: 'hover:bg-teal-700', text: 'text-teal-500', border: 'border-teal-500', light: 'bg-teal-500/20', stroke: '#14b8a6', ring: 'ring-teal-500' },
     'Rose': { bg: 'bg-rose-600', hover: 'hover:bg-rose-700', text: 'text-rose-500', border: 'border-rose-500', light: 'bg-rose-500/20', stroke: '#f43f5e', ring: 'ring-rose-500' },
@@ -69,7 +71,7 @@ const getThemeStyles = (themeName) => {
     'Cyan': { bg: 'bg-cyan-600', hover: 'hover:bg-cyan-700', text: 'text-cyan-500', border: 'border-cyan-500', light: 'bg-cyan-500/20', stroke: '#06b6d4', ring: 'ring-cyan-500' },
     'Slate': { bg: 'bg-slate-600', hover: 'hover:bg-slate-700', text: 'text-slate-500', border: 'border-slate-500', light: 'bg-slate-500/20', stroke: '#64748b', ring: 'ring-slate-500' },
   };
-  return map[themeName] || map['Violet'];
+  return map[safeName] || map['Violet'];
 };
 
 const INITIAL_DATA = {
@@ -87,9 +89,7 @@ const INITIAL_DATA = {
 
 const getUserSubjects = (selectedExams) => {
   let showMath = false, showBio = false;
-  // Handle undefined or null selectedExams
   const exams = selectedExams || [];
-  
   if (exams.length === 0) return ALL_SUBJECTS;
   
   exams.forEach(exam => {
@@ -127,13 +127,12 @@ const StudyHeatmap = ({ history, theme, isDark }) => {
   };
   const data = generateYearData();
   
-  // Safe color generation function
   const getCellColor = (intensity) => {
       if (intensity === 0) return isDark ? 'bg-gray-800' : 'bg-gray-200';
       if (intensity === 1) return `${theme.light} opacity-40`;
       if (intensity === 2) return `${theme.light} opacity-70`;
       if (intensity === 3) return theme.bg;
-      return `${theme.bg} shadow-lg`; // Intensity 4
+      return `${theme.bg} shadow-lg`;
   };
 
   return (
@@ -248,7 +247,6 @@ const ChapterItem = ({ subjectName, chapter, onUpdate, onDelete, theme, isDark }
   const updateDiby = (field, val) => { onUpdate({ ...chapter, diby: { ...(chapter.diby || {solved:0, total:0}), [field]: parseInt(val) || 0 } }); };
   const textCol = isDark ? 'text-white' : 'text-gray-900';
   
-  // Safe Class Name Generation
   const iconClass = progress === 100 ? 'bg-green-500/20 text-green-500' : `${theme.light} ${theme.text}`;
   
   return (
@@ -564,7 +562,7 @@ export default function App() {
             <button 
                 key={item.id} 
                 onClick={() => setView(item.id)} 
-                className={`relative flex items-center gap-4 py-3 px-3 rounded-xl transition-all duration-200 group ${view === item.id ? `${theme.bg} text-white shadow-lg shadow-${theme.name.toLowerCase()}-500/20` : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
+                className={`relative flex items-center gap-4 py-3 px-3 rounded-xl transition-all duration-200 group ${view === item.id ? `${theme.bg} text-white shadow-lg` : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
             >
               <item.icon size={22} />
               {isSidebarOpen && <span className="font-bold text-sm whitespace-nowrap">{item.label}</span>}
