@@ -13,18 +13,18 @@ import {
   Legend
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
+
+//--- FIREBASE IMPORTS ---
 import { 
   signInWithPopup, 
   signOut, 
-  onAuthStateChanged,
-  createUserWithEmailAndPassword, // Add this
-  signInWithEmailAndPassword      // Add this
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword 
 } from "firebase/auth";
-// --- FIREBASE IMPORTS ---
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, googleProvider, db } from "./firebase"; 
 
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { auth, googleProvider, db } from "./firebase";
 /**
  * JEEPLANET PRO - v22.0 (Exam Selection, Heatmap, Countdown)
  */
