@@ -5,12 +5,13 @@ import {
   Plus, Trash2, FileText, TrendingUp, LogOut,
   Timer as TimerIcon, StopCircle, Target, User,
   Settings, Image as ImageIcon, ExternalLink, Maximize, Minimize,
-  PieChart as PieChartIcon, Upload, Bell, Calendar, Edit3, Mail, Lock, KeyRound, CheckSquare
+  PieChart as PieChartIcon, Upload, Bell, Calendar, Edit3, Mail, Lock, KeyRound, CheckSquare,
+  Tag
 } from 'lucide-react';
 import { 
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
   ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell,
-  Legend
+  Legend, LineChart, Line
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -28,38 +29,58 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEEPLANET PRO - v26.0 (Multi-Exam Support)
+ * PREPPILOT - v27.0 (Smart Syllabus, Task Subjects, Heatmap Fix, Countdown Grid)
  */
 
 // --- CONSTANTS & CONFIG ---
-const SUBJECTS = ["Physics", "Maths", "Organic Chem", "Inorganic Chem", "Physical Chem", "Biology"];
-const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#ef4444']; 
+const ALL_SUBJECTS = ["Physics", "Maths", "Biology", "Organic Chem", "Inorganic Chem", "Physical Chem"];
+const COLORS = ['#8b5cf6', '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#ec4899']; 
 
 const EXAM_CONFIG = {
-  "JEE Mains (Jan) 2027": { date: "2027-01-21", marks: 300 },
-  "JEE Mains (April) 2027": { date: "2027-04-02", marks: 300 },
-  "JEE Advanced 2026": { date: "2026-05-15", marks: 0 }, 
-  "JEE Advanced 2027": { date: "2027-05-15", marks: 0 },
-  "BITSAT 2027": { date: "2027-04-15", marks: 390 },
-  "NEET 2026": { date: "2026-05-05", marks: 720 },
-  "NEET 2027": { date: "2027-05-05", marks: 720 },
-  "MHT-CET (PCM) 2026": { date: "2026-04-10", marks: 200 },
-  "MHT-CET (PCB) 2026": { date: "2026-04-10", marks: 200 },
-  "MHT-CET (PCM) 2027": { date: "2027-04-10", marks: 200 },
-  "MHT-CET (PCB) 2027": { date: "2027-04-10", marks: 200 },
+  "JEE Mains (Jan) 2027": { date: "2027-01-21", marks: 300, type: "Math" },
+  "JEE Mains (April) 2027": { date: "2027-04-02", marks: 300, type: "Math" },
+  "JEE Advanced 2026": { date: "2026-05-15", marks: 0, type: "Math" }, 
+  "JEE Advanced 2027": { date: "2027-05-15", marks: 0, type: "Math" },
+  "BITSAT 2027": { date: "2027-04-15", marks: 390, type: "Math" },
+  "NEET 2026": { date: "2026-05-05", marks: 720, type: "Bio" },
+  "NEET 2027": { date: "2027-05-05", marks: 720, type: "Bio" },
+  "MHT-CET (PCM) 2026": { date: "2026-04-10", marks: 200, type: "Math" },
+  "MHT-CET (PCB) 2026": { date: "2026-04-10", marks: 200, type: "Bio" },
+  "MHT-CET (PCM) 2027": { date: "2027-04-10", marks: 200, type: "Math" },
+  "MHT-CET (PCB) 2027": { date: "2027-04-10", marks: 200, type: "Bio" },
 };
 
 const INITIAL_DATA = {
   dailyGoal: 10,
   tasks: [],
-  subjects: SUBJECTS.reduce((acc, sub) => ({ ...acc, [sub]: { chapters: [], timeSpent: 0 } }), {}),
+  subjects: ALL_SUBJECTS.reduce((acc, sub) => ({ ...acc, [sub]: { chapters: [], timeSpent: 0 } }), {}),
   mockTests: [],
   kppList: [],
   history: {}, 
   xp: 0, 
   darkMode: true,
   bgImage: "",
-  selectedExams: [], // CHANGED: Array for multi-select
+  selectedExams: [], 
+};
+
+// --- HELPER: GET USER SUBJECTS BASED ON EXAM ---
+const getUserSubjects = (selectedExams = []) => {
+  let showMath = false;
+  let showBio = false;
+
+  if (selectedExams.length === 0) return ALL_SUBJECTS; // Default all if none selected
+
+  selectedExams.forEach(exam => {
+    const type = EXAM_CONFIG[exam]?.type;
+    if (type === 'Math') showMath = true;
+    if (type === 'Bio') showBio = true;
+  });
+
+  return ALL_SUBJECTS.filter(sub => {
+    if (sub === 'Maths' && !showMath) return false;
+    if (sub === 'Biology' && !showBio) return false;
+    return true;
+  });
 };
 
 // --- UTILITY COMPONENTS ---
@@ -72,14 +93,20 @@ const GlassCard = ({ children, className = "", hover = false }) => (
   </motion.div>
 );
 
-// --- HEATMAP COMPONENT ---
+// --- HEATMAP COMPONENT (GitHub Style Fix) ---
 const StudyHeatmap = ({ history }) => {
   const generateYearData = () => {
     const days = [];
     const today = new Date();
-    const start = new Date();
-    start.setDate(today.getDate() - 364);
-
+    // End date is today
+    // Start date is 52 weeks ago (approx 1 year), aligned to start on a Sunday to keep grid clean
+    const end = today;
+    const start = new Date(end);
+    start.setDate(end.getDate() - 364); 
+    
+    // Adjust start to previous Sunday if needed for perfect alignment, 
+    // but typically just rendering 365 days in grid-auto-flow: column works if height is fixed to 7
+    
     for (let i = 0; i < 365; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
@@ -92,35 +119,36 @@ const StudyHeatmap = ({ history }) => {
       if (mins > 180) intensity = 3;
       if (mins > 360) intensity = 4;
 
-      days.push({ date: dateStr, intensity });
+      days.push({ date: dateStr, intensity, dayOfWeek: d.getDay(), month: d.toLocaleString('default', { month: 'short' }) });
     }
     return days;
   };
 
   const data = generateYearData();
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   return (
-    <div className="w-full overflow-x-auto pb-2">
-      <div className="flex gap-1 min-w-[800px]">
-         <div className="grid grid-flow-col grid-rows-7 gap-1">
+    <div className="w-full overflow-x-auto pb-2 no-scrollbar">
+      <div className="flex flex-col gap-1 min-w-[600px]">
+         {/* Grid Container: 7 Rows (Sun-Sat), Auto Columns */}
+         <div className="grid grid-rows-7 grid-flow-col gap-1 h-[100px]">
             {data.map((day) => (
               <div 
                 key={day.date} 
                 title={`${day.date}: ${Math.round((history[day.date]||0)/60)}h`}
-                className={`w-3 h-3 rounded-sm ${
-                  day.intensity === 0 ? 'bg-white/5' :
-                  day.intensity === 1 ? 'bg-emerald-900' :
-                  day.intensity === 2 ? 'bg-emerald-700' :
-                  day.intensity === 3 ? 'bg-emerald-500' :
-                  'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                className={`w-3 h-3 rounded-sm transition-all hover:scale-125 ${
+                  day.intensity === 0 ? 'bg-[#27272a]' :
+                  day.intensity === 1 ? 'bg-violet-900/40' :
+                  day.intensity === 2 ? 'bg-violet-700/60' :
+                  day.intensity === 3 ? 'bg-violet-500' :
+                  'bg-violet-300 shadow-[0_0_8px_rgba(167,139,250,0.6)]'
                 }`}
               />
             ))}
          </div>
-      </div>
-      <div className="flex justify-between mt-2 text-[10px] text-gray-500 font-mono px-1">
-         {months.map(m => <span key={m}>{m}</span>)}
+         {/* Simple Month Labels (Approximate) */}
+         <div className="flex justify-between text-[10px] text-gray-500 font-bold px-2 uppercase tracking-widest">
+             <span>Jan</span><span>Mar</span><span>May</span><span>Jul</span><span>Sep</span><span>Nov</span><span>Dec</span>
+         </div>
       </div>
     </div>
   );
@@ -179,48 +207,33 @@ const ProfileDropdown = ({ user, onLogout, onChangeExam }) => {
   );
 };
 
-// --- EXAM SELECTION SCREEN (MULTI SELECT) ---
+// --- EXAM SELECTION SCREEN ---
 const ExamSelectionScreen = ({ onSave }) => {
   const [selected, setSelected] = useState([]);
 
   const toggleExam = (exam) => {
-    if (selected.includes(exam)) {
-      setSelected(selected.filter(e => e !== exam));
-    } else {
-      setSelected([...selected, exam]);
-    }
+    if (selected.includes(exam)) setSelected(selected.filter(e => e !== exam));
+    else setSelected([...selected, exam]);
   };
 
   return (
     <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center p-6 overflow-y-auto">
       <div className="max-w-5xl w-full text-center">
-        <h1 className="text-3xl md:text-5xl font-bold text-white mb-2">Choose Your Goals 🎯</h1>
-        <p className="text-gray-400 mb-8">Select all the exams you are targeting.</p>
+        <h1 className="text-3xl md:text-5xl font-bold text-white mb-2">Welcome to PrepPilot ✈️</h1>
+        <p className="text-gray-400 mb-8">Select your target exams to customize your cockpit.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
           {Object.keys(EXAM_CONFIG).map((exam) => {
             const isSelected = selected.includes(exam);
             return (
-              <button
-                key={exam}
-                onClick={() => toggleExam(exam)}
-                className={`p-5 rounded-2xl transition-all text-left flex justify-between items-center group border ${isSelected ? 'bg-violet-600/20 border-violet-500' : 'bg-white/5 border-white/10 hover:border-white/30'}`}
-              >
-                <div>
-                  <h3 className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-gray-300 group-hover:text-white'}`}>{exam}</h3>
-                  <p className="text-[10px] text-gray-500 mt-1">Target: {EXAM_CONFIG[exam].date}</p>
-                </div>
+              <button key={exam} onClick={() => toggleExam(exam)} className={`p-5 rounded-2xl transition-all text-left flex justify-between items-center group border ${isSelected ? 'bg-violet-600/20 border-violet-500' : 'bg-white/5 border-white/10 hover:border-white/30'}`}>
+                <div><h3 className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-gray-300 group-hover:text-white'}`}>{exam}</h3><p className="text-[10px] text-gray-500 mt-1">Target: {EXAM_CONFIG[exam].date}</p></div>
                 {isSelected && <CheckCircle size={20} className="text-violet-500" />}
               </button>
             );
           })}
         </div>
-
-        <button 
-          onClick={() => onSave(selected)} 
-          disabled={selected.length === 0}
-          className="px-10 py-4 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-all active:scale-95 disabled:opacity-50 disabled:scale-100"
-        >
+        <button onClick={() => onSave(selected)} disabled={selected.length === 0} className="px-10 py-4 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-all active:scale-95 disabled:opacity-50 disabled:scale-100">
           Continue with {selected.length} Exam{selected.length !== 1 ? 's' : ''}
         </button>
       </div>
@@ -237,29 +250,14 @@ const LoginScreen = () => {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleGoogleLogin = async () => {
-    try { await signInWithPopup(auth, googleProvider); } catch (error) { setError(error.message); }
-  };
-
+  const handleGoogleLogin = async () => { try { await signInWithPopup(auth, googleProvider); } catch (error) { setError(error.message); } };
   const handleAuth = async (e) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+    e.preventDefault(); setError(""); setIsLoading(true);
     try {
-      if (isReset) {
-        await sendPasswordResetEmail(auth, email);
-        alert(`Password reset link sent to ${email}. Check your inbox!`);
-        setIsReset(false);
-      } else if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await sendEmailVerification(userCredential.user);
-        alert("Verification email sent! Please check your inbox.");
-      }
-    } catch (err) {
-      setError(err.message);
-    }
+      if (isReset) { await sendPasswordResetEmail(auth, email); alert(`Password reset link sent to ${email}. Check your inbox!`); setIsReset(false); }
+      else if (isLogin) { await signInWithEmailAndPassword(auth, email, password); }
+      else { const userCredential = await createUserWithEmailAndPassword(auth, email, password); await sendEmailVerification(userCredential.user); alert("Verification email sent! Please check your inbox."); }
+    } catch (err) { setError(err.message); }
     setIsLoading(false);
   };
 
@@ -268,76 +266,38 @@ const LoginScreen = () => {
       <div className="w-full max-w-md bg-[#121212] border border-white/10 rounded-3xl p-8 shadow-2xl">
         <div className="text-center mb-8">
           <div className="inline-flex p-4 bg-violet-600/20 rounded-full mb-4 animate-pulse"><Zap size={40} className="text-violet-500" /></div>
-          <h1 className="text-3xl font-bold text-white">JEEPlanet <span className="text-violet-500">Pro</span></h1>
-          <p className="text-gray-400 text-sm mt-2">
-            {isReset ? "Reset your password" : (isLogin ? "Welcome back, Aspirant!" : "Start your journey today.")}
-          </p>
+          <h1 className="text-3xl font-bold text-white">PrepPilot <span className="text-violet-500">Pro</span></h1>
+          <p className="text-gray-400 text-sm mt-2">{isReset ? "Reset your password" : (isLogin ? "Welcome back, Pilot!" : "Prepare for takeoff.")}</p>
         </div>
-
         <form onSubmit={handleAuth} className="space-y-4">
           <div className="space-y-2">
-            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus-within:border-violet-500 transition-colors">
-              <Mail size={20} className="text-gray-400" />
-              <input type="email" placeholder="Email Address" required className="bg-transparent outline-none text-white w-full placeholder-gray-500" value={email} onChange={e => setEmail(e.target.value)} />
-            </div>
-            
-            {!isReset && (
-                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus-within:border-violet-500 transition-colors">
-                <Lock size={20} className="text-gray-400" />
-                <input type="password" placeholder="Password" required className="bg-transparent outline-none text-white w-full placeholder-gray-500" value={password} onChange={e => setPassword(e.target.value)} />
-                </div>
-            )}
+            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus-within:border-violet-500 transition-colors"><Mail size={20} className="text-gray-400" /><input type="email" placeholder="Email Address" required className="bg-transparent outline-none text-white w-full placeholder-gray-500" value={email} onChange={e => setEmail(e.target.value)} /></div>
+            {!isReset && (<div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus-within:border-violet-500 transition-colors"><Lock size={20} className="text-gray-400" /><input type="password" placeholder="Password" required className="bg-transparent outline-none text-white w-full placeholder-gray-500" value={password} onChange={e => setPassword(e.target.value)} /></div>)}
           </div>
-
           {error && <p className="text-red-400 text-xs text-center">{error}</p>}
-
-          {!isReset && isLogin && (
-              <div className="flex justify-end">
-                  <button type="button" onClick={() => setIsReset(true)} className="text-xs text-violet-400 hover:text-violet-300 font-bold">Forgot Password?</button>
-              </div>
-          )}
-
-          <button type="submit" disabled={isLoading} className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-all active:scale-95 shadow-lg shadow-violet-600/20 disabled:opacity-50">
-            {isLoading ? "Processing..." : (isReset ? "Send Reset Link" : (isLogin ? "Login" : "Create Account"))}
-          </button>
+          {!isReset && isLogin && (<div className="flex justify-end"><button type="button" onClick={() => setIsReset(true)} className="text-xs text-violet-400 hover:text-violet-300 font-bold">Forgot Password?</button></div>)}
+          <button type="submit" disabled={isLoading} className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-all active:scale-95 shadow-lg shadow-violet-600/20 disabled:opacity-50">{isLoading ? "Processing..." : (isReset ? "Send Reset Link" : (isLogin ? "Login" : "Create Account"))}</button>
         </form>
-
-        {isReset ? (
-            <button onClick={() => setIsReset(false)} className="w-full mt-4 text-gray-400 hover:text-white text-sm">Back to Login</button>
-        ) : (
-            <>
-                <div className="flex items-center gap-4 my-6">
-                <div className="h-px bg-white/10 flex-1"></div>
-                <span className="text-xs text-gray-500 font-bold uppercase">Or continue with</span>
-                <div className="h-px bg-white/10 flex-1"></div>
-                </div>
-
-                <button onClick={handleGoogleLogin} className="w-full py-3 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-3 hover:bg-gray-200 transition-transform active:scale-95">
-                <img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" /> Google
-                </button>
-
-                <p className="text-center text-gray-400 text-sm mt-8">
-                {isLogin ? "Don't have an account?" : "Already have an account?"} 
-                <button onClick={() => setIsLogin(!isLogin)} className="text-violet-400 font-bold ml-2 hover:underline">
-                    {isLogin ? "Sign Up" : "Login"}
-                </button>
-                </p>
-            </>
-        )}
+        {isReset ? (<button onClick={() => setIsReset(false)} className="w-full mt-4 text-gray-400 hover:text-white text-sm">Back to Login</button>) : (<><div className="flex items-center gap-4 my-6"><div className="h-px bg-white/10 flex-1"></div><span className="text-xs text-gray-500 font-bold uppercase">Or continue with</span><div className="h-px bg-white/10 flex-1"></div></div><button onClick={handleGoogleLogin} className="w-full py-3 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-3 hover:bg-gray-200 transition-transform active:scale-95"><img src="https://www.google.com/favicon.ico" alt="G" className="w-5 h-5" /> Google</button><p className="text-center text-gray-400 text-sm mt-8">{isLogin ? "Don't have an account?" : "Already have an account?"} <button onClick={() => setIsLogin(!isLogin)} className="text-violet-400 font-bold ml-2 hover:underline">{isLogin ? "Sign Up" : "Login"}</button></p></>)}
       </div>
     </div>
   );
 };
 
-// --- FOCUS TIMER ---
+// --- FOCUS TIMER (Uses Dynamic Subjects) ---
 const FocusTimer = ({ data, setData, onSaveSession }) => {
-  const [mode, setMode] = useState('stopwatch'); const [timeLeft, setTimeLeft] = useState(0); const [initialTimerTime, setInitialTimerTime] = useState(60); const [isActive, setIsActive] = useState(false); const [selectedSub, setSelectedSub] = useState(SUBJECTS[0]); const [showSettings, setShowSettings] = useState(false); const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mode, setMode] = useState('stopwatch'); const [timeLeft, setTimeLeft] = useState(0); const [initialTimerTime, setInitialTimerTime] = useState(60); const [isActive, setIsActive] = useState(false); const [showSettings, setShowSettings] = useState(false); const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Dynamic Subjects based on Exam Selection
+  const mySubjects = getUserSubjects(data.selectedExams);
+  const [selectedSub, setSelectedSub] = useState(mySubjects[0] || "Physics");
+
   const containerRef = useRef(null); const canvasRef = useRef(null); const videoRef = useRef(null); const fileInputRef = useRef(null);
   const handleFileUpload = (e) => { const file = e.target.files[0]; if(file) { const reader = new FileReader(); reader.onloadend = () => setData({...data, bgImage: reader.result}); reader.readAsDataURL(file); }};
   const toggleFullscreen = () => { if (!document.fullscreenElement) containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(err => alert("Fullscreen blocked")); else document.exitFullscreen().then(() => setIsFullscreen(false)); };
   useEffect(() => { const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement); document.addEventListener("fullscreenchange", handleFsChange); return () => document.removeEventListener("fullscreenchange", handleFsChange); }, []);
   useEffect(() => { const video = videoRef.current; if (!video) return; const handlePause = () => setIsActive(false); const handlePlay = () => setIsActive(true); video.addEventListener('pause', handlePause); video.addEventListener('play', handlePlay); return () => { video.removeEventListener('pause', handlePause); video.removeEventListener('play', handlePlay); }; }, []);
-  useEffect(() => { let interval = null; if (isActive) { interval = setInterval(() => { setTimeLeft(prev => { let newVal = mode === 'timer' ? prev - 1 : prev + 1; if (mode === 'timer' && newVal <= 0) { setIsActive(false); alert("Timer Finished!"); return 0; } if (document.pictureInPictureElement && canvasRef.current) updatePiPCanvas(newVal); document.title = `(${formatTime(newVal)}) JEEPlanet`; return newVal; }); }, 1000); } else { document.title = "JEEPlanet Pro"; } return () => clearInterval(interval); }, [isActive, mode]);
+  useEffect(() => { let interval = null; if (isActive) { interval = setInterval(() => { setTimeLeft(prev => { let newVal = mode === 'timer' ? prev - 1 : prev + 1; if (mode === 'timer' && newVal <= 0) { setIsActive(false); alert("Timer Finished!"); return 0; } if (document.pictureInPictureElement && canvasRef.current) updatePiPCanvas(newVal); document.title = `(${formatTime(newVal)}) PrepPilot`; return newVal; }); }, 1000); } else { document.title = "PrepPilot Pro"; } return () => clearInterval(interval); }, [isActive, mode]);
   const formatTime = (s) => { const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60; return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`; };
   const updatePiPCanvas = (time) => { const canvas = canvasRef.current; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(formatTime(time), canvas.width / 2, canvas.height / 2); };
   const togglePiP = async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else { const canvas = canvasRef.current; const video = videoRef.current; if (canvas && video) { updatePiPCanvas(timeLeft); const stream = canvas.captureStream(); video.srcObject = stream; await video.play(); await video.requestPictureInPicture(); } } } catch (err) { console.error(err); alert("Floating mode failed. Try Chrome Desktop."); } };
@@ -349,11 +309,11 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
       <canvas ref={canvasRef} width={400} height={200} className="hidden" /><video ref={videoRef} className="hidden" muted />
       <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20"><div className="bg-[#18181b]/90 backdrop-blur border border-white/10 rounded-full py-2 px-4 flex items-center gap-3 w-64 shadow-lg"><div className="flex flex-col flex-1"><div className="flex justify-between text-[10px] uppercase font-bold text-gray-400 mb-1"><span>Daily Goal</span><span>{Math.floor(todayMins/60)}h {Math.round(todayMins%60)}m / {data.dailyGoal}h 0m</span></div><div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-violet-500 transition-all duration-500" style={{width: `${percent}%`}}></div></div></div></div><div className="flex gap-2"><button onClick={togglePiP} className="p-2 bg-[#18181b]/90 border border-white/10 rounded-full text-gray-400 hover:text-white transition"><ExternalLink size={18}/></button><button onClick={toggleFullscreen} className="p-2 bg-[#18181b]/90 border border-white/10 rounded-full text-gray-400 hover:text-white transition">{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button><button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-[#18181b]/90 border border-white/10 rounded-full text-gray-400 hover:text-white transition"><Settings size={18}/></button></div></div>
       <AnimatePresence>{showSettings && (<motion.div initial={{opacity:0, y:-20}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-20}} className="absolute top-20 right-4 z-30 bg-[#18181b] border border-white/10 p-4 rounded-xl shadow-2xl w-72"><h4 className="text-white font-bold mb-3 flex items-center gap-2"><ImageIcon size={16}/> Custom Background</h4><div className="mb-3"><span className="text-[10px] text-gray-500 uppercase font-bold">Image URL</span><input type="text" placeholder="Paste URL..." className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-white outline-none focus:border-violet-500" value={data.bgImage?.startsWith('data') ? '' : data.bgImage} onChange={(e) => setData({...data, bgImage: e.target.value})} /></div><div className="mb-4"><span className="text-[10px] text-gray-500 uppercase font-bold">Or Upload from Device</span><input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} /><button onClick={() => fileInputRef.current.click()} className="mt-1 w-full flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-300 font-bold transition"><Upload size={14} /> Choose File</button></div><div className="flex justify-end"><button onClick={() => setData({...data, bgImage: ''})} className="text-xs text-red-400 hover:text-red-300">Remove Image</button></div></motion.div>)}</AnimatePresence>
-      <div className="flex-1 flex flex-col items-center justify-center gap-8 z-10">{!isActive && (<div className="flex bg-white/5 backdrop-blur p-1 rounded-lg animate-in fade-in zoom-in duration-300"><button onClick={() => { setMode('stopwatch'); setTimeLeft(0); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'stopwatch' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Stopwatch</button><button onClick={() => { setMode('timer'); setTimeLeft(initialTimerTime*60); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'timer' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Timer</button></div>)}<div className="text-center"><div className="text-[8rem] md:text-[12rem] font-bold font-mono tracking-tighter leading-none text-white tabular-nums drop-shadow-2xl transition-all">{formatTime(timeLeft)}</div>{mode === 'timer' && !isActive && (<div className="mt-4 flex items-center justify-center gap-2"><span className="text-gray-400">Set Minutes:</span><input type="number" value={initialTimerTime} onChange={(e) => { const val = parseInt(e.target.value) || 0; setInitialTimerTime(val); setTimeLeft(val * 60); }} className="bg-white/10 border border-white/10 rounded px-2 py-1 w-20 text-center text-white font-bold backdrop-blur" /></div>)}</div><div className="bg-[#18181b]/90 backdrop-blur border border-white/10 p-2 rounded-2xl flex items-center gap-4 shadow-2xl transition-all duration-500">{isActive ? (<div className="px-6 py-3 font-bold text-violet-400 flex items-center gap-2 bg-white/5 rounded-xl border border-white/5"><div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>Studying: {selectedSub}</div>) : (<select className="appearance-none bg-[#27272a] hover:bg-[#3f3f46] text-white py-3 pl-4 pr-8 rounded-xl font-bold outline-none cursor-pointer transition-colors" value={selectedSub} onChange={(e) => setSelectedSub(e.target.value)}>{SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select>)}{!isActive ? (<button onClick={handleStart} className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Play size={20} fill="currentColor" /> {timeLeft > 0 && mode === 'timer' && timeLeft < initialTimerTime*60 ? "Resume" : "Start"}</button>) : (<button onClick={() => setIsActive(false)} className="px-8 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Pause size={20} fill="currentColor" /> Pause</button>)}{(timeLeft > 0 || isActive) && <button onClick={handleStop} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors border border-red-500/20"><StopCircle size={20} /></button>}</div></div></div>
+      <div className="flex-1 flex flex-col items-center justify-center gap-8 z-10">{!isActive && (<div className="flex bg-white/5 backdrop-blur p-1 rounded-lg animate-in fade-in zoom-in duration-300"><button onClick={() => { setMode('stopwatch'); setTimeLeft(0); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'stopwatch' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Stopwatch</button><button onClick={() => { setMode('timer'); setTimeLeft(initialTimerTime*60); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'timer' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Timer</button></div>)}<div className="text-center"><div className="text-[8rem] md:text-[12rem] font-bold font-mono tracking-tighter leading-none text-white tabular-nums drop-shadow-2xl transition-all">{formatTime(timeLeft)}</div>{mode === 'timer' && !isActive && (<div className="mt-4 flex items-center justify-center gap-2"><span className="text-gray-400">Set Minutes:</span><input type="number" value={initialTimerTime} onChange={(e) => { const val = parseInt(e.target.value) || 0; setInitialTimerTime(val); setTimeLeft(val * 60); }} className="bg-white/10 border border-white/10 rounded px-2 py-1 w-20 text-center text-white font-bold backdrop-blur" /></div>)}</div><div className="bg-[#18181b]/90 backdrop-blur border border-white/10 p-2 rounded-2xl flex items-center gap-4 shadow-2xl transition-all duration-500">{isActive ? (<div className="px-6 py-3 font-bold text-violet-400 flex items-center gap-2 bg-white/5 rounded-xl border border-white/5"><div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>Studying: {selectedSub}</div>) : (<select className="appearance-none bg-[#27272a] hover:bg-[#3f3f46] text-white py-3 pl-4 pr-8 rounded-xl font-bold outline-none cursor-pointer transition-colors" value={selectedSub} onChange={(e) => setSelectedSub(e.target.value)}>{mySubjects.map(s => <option key={s} value={s}>{s}</option>)}</select>)}{!isActive ? (<button onClick={handleStart} className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Play size={20} fill="currentColor" /> {timeLeft > 0 && mode === 'timer' && timeLeft < initialTimerTime*60 ? "Resume" : "Start"}</button>) : (<button onClick={() => setIsActive(false)} className="px-8 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Pause size={20} fill="currentColor" /> Pause</button>)}{(timeLeft > 0 || isActive) && <button onClick={handleStop} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors border border-red-500/20"><StopCircle size={20} /></button>}</div></div></div>
   );
 };
 
-// --- 3. PHYSICS KPP (Unchanged) ---
+// --- PHYSICS KPP --- (Unchanged)
 const PhysicsKPP = ({ data, setData }) => {
     const [newKPP, setNewKPP] = useState({ name: '', chapter: '', attempted: false, corrected: false, myScore: 0, totalScore: 0 });
     const physicsChapters = data.subjects['Physics']?.chapters || [];
@@ -364,19 +324,27 @@ const PhysicsKPP = ({ data, setData }) => {
     return (<div className="space-y-6 max-w-5xl mx-auto"><h1 className="text-3xl font-bold text-white mb-2">Physics KPP Tracker</h1><GlassCard className="border-t-4 border-t-purple-500"><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><input type="text" placeholder="KPP Name (e.g. Rotational-01)" className="bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newKPP.name} onChange={e => setNewKPP({...newKPP, name: e.target.value})} /><select className="bg-[#18181b] border border-white/10 rounded-lg p-3 text-white outline-none" value={newKPP.chapter} onChange={e => setNewKPP({...newKPP, chapter: e.target.value})}><option value="">Select Physics Chapter</option>{physicsChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div><div className="flex flex-wrap gap-4 items-center"><div className="flex items-center gap-2 text-gray-400"><input type="checkbox" className="w-5 h-5 accent-purple-500" checked={newKPP.attempted} onChange={e => setNewKPP({...newKPP, attempted: e.target.checked})} /> Attempted</div><div className="flex items-center gap-2 text-gray-400"><input type="checkbox" className="w-5 h-5 accent-green-500" checked={newKPP.corrected} onChange={e => setNewKPP({...newKPP, corrected: e.target.checked})} /> Corrected</div><div className="flex items-center gap-2"><input type="number" placeholder="My Score" className="w-24 bg-white/5 border border-white/10 rounded-lg p-2 text-white" value={newKPP.myScore} onChange={e => setNewKPP({...newKPP, myScore: parseFloat(e.target.value)})} /><span className="text-gray-500">/</span><input type="number" placeholder="Total" className="w-24 bg-white/5 border border-white/10 rounded-lg p-2 text-white" value={newKPP.totalScore} onChange={e => setNewKPP({...newKPP, totalScore: parseFloat(e.target.value)})} /></div><button onClick={addKPP} className="ml-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold">Add KPP</button></div></GlassCard>{graphData.length > 0 && (<GlassCard className="h-[300px]"><ResponsiveContainer width="100%" height="90%"><BarChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Bar dataKey="percentage" fill="#8b5cf6" radius={[4,4,0,0]} name="Score %" /></BarChart></ResponsiveContainer></GlassCard>)}<div className="grid gap-3">{(data.kppList || []).slice().reverse().map(kpp => (<div key={kpp.id} className="bg-[#121212] border border-white/10 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex-1"><div className="flex items-center gap-3"><span className="font-bold text-white text-lg">{kpp.name}</span><span className="text-xs text-gray-500 px-2 py-1 bg-white/5 rounded">{kpp.chapter}</span></div><div className="flex gap-4 mt-2 text-sm"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.attempted} onChange={(e) => updateKPP(kpp.id, 'attempted', e.target.checked)} className="accent-purple-500"/> <span className={kpp.attempted ? "text-purple-400" : "text-gray-500"}>Attempted</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={kpp.corrected} onChange={(e) => updateKPP(kpp.id, 'corrected', e.target.checked)} className="accent-green-500"/> <span className={kpp.corrected ? "text-green-400" : "text-gray-500"}>Corrected</span></label></div></div><div className="flex items-center gap-4"><div className="text-right"><div className="text-white font-bold text-xl">{kpp.myScore} <span className="text-gray-500 text-sm">/ {kpp.totalScore}</span></div><div className="text-xs text-gray-500">{kpp.totalScore > 0 ? Math.round((kpp.myScore/kpp.totalScore)*100) : 0}%</div></div><button onClick={() => deleteKPP(kpp.id)} className="text-gray-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>))}</div></div>);
 };
 
-// --- 4. SYLLABUS (Unchanged) ---
+// --- SYLLABUS (Smart Filtered) ---
 const Syllabus = ({ data, setData }) => {
-  const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
+  const mySubjects = getUserSubjects(data.selectedExams);
+  const [selectedSubject, setSelectedSubject] = useState(mySubjects[0]);
   const [gradeView, setGradeView] = useState('11');
+
+  // Update selected subject if current one becomes invalid (e.g. removed exam)
+  useEffect(() => {
+      if (!mySubjects.includes(selectedSubject)) setSelectedSubject(mySubjects[0]);
+  }, [data.selectedExams]);
+
   const addChapter = () => { const name = prompt(`Enter Class ${gradeView} Chapter Name:`); const lectures = prompt("Total Main Lectures:"); if (name && lectures) { const newChapter = { id: Date.now().toString(), name, totalLectures: parseInt(lectures), lectures: new Array(parseInt(lectures)).fill(false), grade: gradeView, miscLectures: [], diby: { solved: 0, total: 0 } }; const newData = { ...data }; newData.subjects[selectedSubject].chapters.push(newChapter); setData(newData); } };
   const updateChapter = (updated) => { const newData = { ...data }; const idx = newData.subjects[selectedSubject].chapters.findIndex(c => c.id === updated.id); newData.subjects[selectedSubject].chapters[idx] = updated; setData(newData); };
   const deleteChapter = (id) => { const newData = { ...data }; newData.subjects[selectedSubject].chapters = newData.subjects[selectedSubject].chapters.filter(c => c.id !== id); setData(newData); };
-  const filteredChapters = data.subjects[selectedSubject].chapters.filter(c => c.grade === gradeView || (!c.grade && gradeView === '11'));
+  const filteredChapters = data.subjects[selectedSubject]?.chapters.filter(c => c.grade === gradeView || (!c.grade && gradeView === '11')) || [];
+  
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div className="flex justify-between items-center"><h1 className="text-3xl font-bold text-white">Syllabus Tracker</h1><button onClick={addChapter} className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold flex items-center gap-2"><Plus size={18} /> Add Chapter</button></div>
       <div className="flex gap-4 p-1 bg-white/5 w-fit rounded-xl">{['11', '12'].map(g => <button key={g} onClick={() => setGradeView(g)} className={`px-6 py-2 rounded-lg text-sm font-bold transition ${gradeView === g ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Class {g}th</button>)}</div>
-      <div className="flex gap-2 overflow-x-auto pb-2">{SUBJECTS.map(s => <button key={s} onClick={() => setSelectedSubject(s)} className={`px-6 py-3 rounded-xl font-bold transition ${selectedSubject === s ? 'bg-white text-black' : 'bg-[#121212] border border-white/10 text-gray-400'}`}>{s}</button>)}</div>
+      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">{mySubjects.map(s => <button key={s} onClick={() => setSelectedSubject(s)} className={`px-6 py-3 rounded-xl font-bold transition whitespace-nowrap ${selectedSubject === s ? 'bg-white text-black' : 'bg-[#121212] border border-white/10 text-gray-400'}`}>{s}</button>)}</div>
       <div className="grid gap-4">{filteredChapters.map(chapter => <ChapterItem key={chapter.id} subjectName={selectedSubject} chapter={chapter} onUpdate={updateChapter} onDelete={deleteChapter} />)}</div>
     </div>
   );
@@ -402,7 +370,7 @@ const ChapterItem = ({ subjectName, chapter, onUpdate, onDelete }) => {
   );
 };
 
-// --- MOCK TEST TRACKER (Updated for Multi-Select) ---
+// --- MOCK TEST TRACKER (Dynamic Graph Filtering) ---
 const MockTestTracker = ({ data, setData }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [filterType, setFilterType] = useState('All'); 
@@ -435,18 +403,32 @@ const MockTestTracker = ({ data, setData }) => {
   };
 
   const deleteTest = (id) => { if(window.confirm("Delete record?")) setData(prev => ({ ...prev, mockTests: prev.mockTests.filter(t => t.id !== id) })); };
+  
+  // Filter list
   const filteredTests = (data.mockTests || []).filter(t => { if (filterType === 'All') return true; return t.type === filterType; });
   const sortedTests = [...filteredTests].sort((a,b) => new Date(a.date) - new Date(b.date));
 
+  // Graph Data (Strictly filtered by current tab)
+  const graphTests = (data.mockTests || []).filter(t => t.type === filterType).sort((a,b) => new Date(a.date) - new Date(b.date));
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center gap-4"><div><h1 className="text-3xl font-bold text-white mb-2">Mock Test Analysis</h1><p className="text-gray-400">Scores by Subject (Stacked)</p></div><button onClick={() => setIsAdding(!isAdding)} className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold flex items-center gap-2">{isAdding ? <X size={18}/> : <Plus size={18}/>} {isAdding ? 'Cancel' : 'Log Test'}</button></div>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div><h1 className="text-3xl font-bold text-white mb-2">Mock Test Analysis</h1><p className="text-gray-400">Track your {filterType} progress</p></div>
+          <div className="flex gap-2 overflow-x-auto max-w-full pb-2 no-scrollbar">
+              <button onClick={() => setFilterType('All')} className={`px-4 py-2 rounded-lg text-sm font-bold border transition whitespace-nowrap ${filterType==='All' ? 'bg-white text-black' : 'border-white/10 text-gray-400'}`}>All History</button>
+              {(data.selectedExams || []).map(exam => (
+                  <button key={exam} onClick={() => setFilterType(exam)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition whitespace-nowrap ${filterType===exam ? 'bg-violet-600 text-white border-violet-600' : 'border-white/10 text-gray-400'}`}>{exam}</button>
+              ))}
+          </div>
+          <button onClick={() => setIsAdding(!isAdding)} className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold flex items-center gap-2">{isAdding ? <X size={18}/> : <Plus size={18}/>} {isAdding ? 'Cancel' : 'Log Test'}</button>
+      </div>
+      
       {isAdding && (
-          <GlassCard className="border-t-4 border-t-violet-500">
+          <GlassCard className="border-t-4 border-t-violet-500 animate-in fade-in slide-in-from-top-4">
               <div className="mb-6">
                   <label className="text-xs text-gray-400 font-bold uppercase mb-2 block">Exam Type</label>
                   <select className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={testType} onChange={(e) => setTestType(e.target.value)}>
-                      {/* Show user's selected exams + Custom */}
                       {(data.selectedExams?.length > 0 ? data.selectedExams : ['JEE Mains (Jan) 2027']).map(e => <option key={e} value={e}>{e}</option>)}
                       <option value="Custom">Custom</option>
                   </select>
@@ -463,114 +445,76 @@ const MockTestTracker = ({ data, setData }) => {
               <button onClick={addTest} className="mt-6 w-full py-3 font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700">Save Score & Set Reminder</button>
           </GlassCard>
       )}
-      {sortedTests.length > 0 ? (<GlassCard className="h-[400px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={sortedTests} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Legend iconType="circle" /><Bar dataKey="p" name="Physics" stackId="a" fill="#8b5cf6" barSize={40} radius={[0,0,4,4]} /><Bar dataKey="c" name="Chemistry" stackId="a" fill="#10b981" barSize={40} /><Bar dataKey="m" name="Maths/Bio" stackId="a" fill="#3b82f6" barSize={40} radius={[4,4,0,0]} /></BarChart></ResponsiveContainer></GlassCard>) : <div className="text-center py-10 text-gray-500">No tests logged.</div>}
-      <div className="grid gap-3">{sortedTests.slice().reverse().map(test => (<div key={test.id} className="group bg-[#121212] border border-white/10 p-4 rounded-xl flex items-center justify-between hover:border-white/20 transition"><div className="flex gap-4 items-center"><div className={`w-1 h-12 rounded-full bg-violet-500`}></div><div><div className="flex items-center gap-3"><h3 className="font-bold text-white">{test.name}</h3><span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-gray-400`}>{test.type}</span>{test.reminder && <Bell size={12} className="text-violet-400" />}</div><div className="text-xs text-gray-500 mt-1">{test.date}</div><div className="flex gap-4 mt-2 text-sm"><span className="text-violet-400">P: {test.p}</span><span className="text-green-400">C: {test.c}</span><span className="text-blue-400">M/B: {test.m}</span></div></div></div><div className="flex items-center gap-6"><div className="text-right"><div className="text-2xl font-bold text-white">{test.total} <span className="text-sm text-gray-500 font-normal">/ {test.maxMarks}</span></div><div className="text-xs text-gray-500 uppercase">{test.maxMarks > 0 ? Math.round((test.total / test.maxMarks) * 100) : 0}%</div></div><button onClick={() => deleteTest(test.id)} className="p-2 text-gray-600 hover:text-red-500 transition" title="Delete Test Record"><Trash2 size={20} /></button></div></div>))}</div>
+
+      {/* GRAPH: Only show if specific exam selected */}
+      {filterType !== 'All' && graphTests.length > 0 && (
+          <GlassCard className="h-[400px]">
+             <h3 className="text-lg font-bold text-white mb-4">{filterType} Trend</h3>
+             <ResponsiveContainer width="100%" height="90%">
+                 <LineChart data={graphTests}>
+                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                     <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                     <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} domain={[0, 'auto']} />
+                     <RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} />
+                     <Legend />
+                     <Line type="monotone" dataKey="total" stroke="#f59e0b" strokeWidth={3} dot={{r:4}} name="Total Score" />
+                 </LineChart>
+             </ResponsiveContainer>
+          </GlassCard>
+      )}
+
+      {/* LIST */}
+      <div className="grid gap-3">
+          {sortedTests.length > 0 ? sortedTests.slice().reverse().map(test => (
+              <div key={test.id} className="group bg-[#121212] border border-white/10 p-4 rounded-xl flex items-center justify-between hover:border-white/20 transition">
+                  <div className="flex gap-4 items-center">
+                      <div className={`w-1 h-12 rounded-full ${test.type.includes('NEET') || test.type.includes('PCB') ? 'bg-red-500' : 'bg-violet-500'}`}></div>
+                      <div>
+                          <div className="flex items-center gap-3"><h3 className="font-bold text-white">{test.name}</h3><span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-white/10 text-gray-400`}>{test.type}</span>{test.reminder && <Bell size={12} className="text-violet-400" />}</div>
+                          <div className="text-xs text-gray-500 mt-1">{test.date}</div>
+                          <div className="flex gap-4 mt-2 text-sm"><span className="text-violet-400">P: {test.p}</span><span className="text-green-400">C: {test.c}</span><span className="text-blue-400">M/B: {test.m}</span></div>
+                      </div>
+                  </div>
+                  <div className="flex items-center gap-6">
+                      <div className="text-right"><div className="text-2xl font-bold text-white">{test.total} <span className="text-sm text-gray-500 font-normal">/ {test.maxMarks}</span></div><div className="text-xs text-gray-500 uppercase">{test.maxMarks > 0 ? Math.round((test.total / test.maxMarks) * 100) : 0}%</div></div>
+                      <button onClick={() => deleteTest(test.id)} className="p-2 text-gray-600 hover:text-red-500 transition" title="Delete"><Trash2 size={20} /></button>
+                  </div>
+              </div>
+          )) : <div className="text-center py-10 text-gray-500">No tests found for this filter.</div>}
+      </div>
     </div>
   );
 };
 
-// --- 5. ANALYSIS COMPONENT (Unchanged) ---
+// --- ANALYSIS COMPONENT (Unchanged) ---
 const Analysis = ({ data }) => {
-    const [range, setRange] = useState('Week'); // Week, Month, Year, All
-
+    const [range, setRange] = useState('Week');
     const generateTimeline = () => {
-        const history = data.history || {};
-        const now = new Date();
-        const timeline = [];
-
+        const history = data.history || {}; const now = new Date(); const timeline = [];
         if (range === 'Week') {
-            const currentDay = now.getDay();
-            const startOfWeek = new Date(now);
-            startOfWeek.setDate(now.getDate() - currentDay);
-            for (let i = 0; i < 7; i++) {
-                const d = new Date(startOfWeek);
-                d.setDate(startOfWeek.getDate() + i);
-                const dateStr = d.toISOString().split('T')[0];
-                timeline.push({ name: d.toLocaleDateString('en-US', { weekday: 'short' }), minutes: history[dateStr] || 0, date: dateStr });
-            }
+            const currentDay = now.getDay(); const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - currentDay);
+            for (let i = 0; i < 7; i++) { const d = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i); const dateStr = d.toISOString().split('T')[0]; timeline.push({ name: d.toLocaleDateString('en-US', { weekday: 'short' }), minutes: history[dateStr] || 0, date: dateStr }); }
         } else if (range === 'Month') {
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            for (let i = 1; i <= daysInMonth; i++) {
-                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                timeline.push({ name: String(i), minutes: history[dateStr] || 0 });
-            }
+            const year = now.getFullYear(); const month = now.getMonth(); const daysInMonth = new Date(year, month + 1, 0).getDate();
+            for (let i = 1; i <= daysInMonth; i++) { const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`; timeline.push({ name: String(i), minutes: history[dateStr] || 0 }); }
         } else if (range === 'Year') {
             const year = now.getFullYear();
-            for (let i = 0; i < 12; i++) {
-                let monthlyTotal = 0;
-                const monthPrefix = `${year}-${String(i + 1).padStart(2, '0')}`;
-                Object.keys(history).forEach(dateStr => { if (dateStr.startsWith(monthPrefix)) monthlyTotal += history[dateStr]; });
-                timeline.push({ name: new Date(year, i).toLocaleDateString('en-US', { month: 'short' }), minutes: monthlyTotal });
-            }
-        }
-        return timeline;
+            for (let i = 0; i < 12; i++) { let monthlyTotal = 0; const monthPrefix = `${year}-${String(i + 1).padStart(2, '0')}`; Object.keys(history).forEach(dateStr => { if (dateStr.startsWith(monthPrefix)) monthlyTotal += history[dateStr]; }); timeline.push({ name: new Date(year, i).toLocaleDateString('en-US', { month: 'short' }), minutes: monthlyTotal }); }
+        } return timeline;
     };
-
-    const trendData = generateTimeline();
-    const totalMinutes = trendData.reduce((acc, curr) => acc + curr.minutes, 0);
-    const totalHours = (totalMinutes / 60).toFixed(1);
-
-    const subjectData = [
-        { name: 'Physics', value: data.subjects["Physics"]?.timeSpent || 0 },
-        { name: 'Maths', value: data.subjects["Maths"]?.timeSpent || 0 },
-        { name: 'Chemistry', value: (data.subjects["Organic Chem"]?.timeSpent || 0) + (data.subjects["Inorganic Chem"]?.timeSpent || 0) + (data.subjects["Physical Chem"]?.timeSpent || 0) }
-    ];
-
+    const trendData = generateTimeline(); const totalMinutes = trendData.reduce((acc, curr) => acc + curr.minutes, 0); const totalHours = (totalMinutes / 60).toFixed(1);
+    const subjectData = [{ name: 'Physics', value: data.subjects["Physics"]?.timeSpent || 0 }, { name: 'Maths', value: data.subjects["Maths"]?.timeSpent || 0 }, { name: 'Chemistry', value: (data.subjects["Organic Chem"]?.timeSpent || 0) + (data.subjects["Inorganic Chem"]?.timeSpent || 0) + (data.subjects["Physical Chem"]?.timeSpent || 0) }, { name: 'Biology', value: data.subjects["Biology"]?.timeSpent || 0 }];
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center">
-                <div><h1 className="text-3xl font-bold text-white mb-1">Deep Dive Analysis</h1><p className="text-gray-400">Detailed performance metrics</p></div>
-                <div className="flex bg-white/5 rounded-lg p-1">
-                    {['Week', 'Month', 'Year'].map(r => (<button key={r} onClick={() => setRange(r)} className={`px-4 py-2 rounded-md text-sm font-bold transition ${range === r ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}>{r}</button>))}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <GlassCard className="flex flex-col justify-center items-center h-40"><span className="text-gray-400 text-xs font-bold uppercase mb-2">Total Time ({range})</span><div className="text-5xl font-bold text-white">{totalHours}<span className="text-2xl text-gray-500">h</span></div></GlassCard>
-                <GlassCard className="flex flex-col justify-center items-center h-40"><span className="text-gray-400 text-xs font-bold uppercase mb-2">Most Studied</span><div className="text-3xl font-bold text-violet-400">{subjectData.sort((a,b) => b.value - a.value)[0]?.name || '-'}</div></GlassCard>
-            </div>
-
-            {/* NEW HEATMAP */}
-            <GlassCard className="overflow-hidden">
-                <h3 className="text-lg font-bold text-white mb-4">Study Consistency (Last 365 Days)</h3>
-                <StudyHeatmap history={data.history} />
-            </GlassCard>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <GlassCard className="h-[350px]">
-                    <h3 className="text-lg font-bold text-white mb-4">Study Trend ({range})</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={trendData}>
-                            <defs><linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/></linearGradient></defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 10}} />
-                            <YAxis hide />
-                            <RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', color: '#fff'}} formatter={(val) => [`${Math.round(val)}m`, 'Study Time']} />
-                            <Area type="monotone" dataKey="minutes" stroke="#8b5cf6" strokeWidth={3} fill="url(#colorTrend)" />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </GlassCard>
-
-                <GlassCard className="h-[350px]">
-                    <h3 className="text-lg font-bold text-white mb-4">Subject Distribution</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie data={subjectData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                {subjectData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none"/>)}
-                            </Pie>
-                            <RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderRadius: '8px', border:'none'}} formatter={(val) => `${Math.round(val/60)}m`} />
-                            <Legend verticalAlign="bottom" iconType="circle"/>
-                        </PieChart>
-                    </ResponsiveContainer>
-                </GlassCard>
-            </div>
+            <div className="flex justify-between items-center"><div><h1 className="text-3xl font-bold text-white mb-1">Deep Dive Analysis</h1><p className="text-gray-400">Detailed performance metrics</p></div><div className="flex bg-white/5 rounded-lg p-1">{['Week', 'Month', 'Year'].map(r => (<button key={r} onClick={() => setRange(r)} className={`px-4 py-2 rounded-md text-sm font-bold transition ${range === r ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}>{r}</button>))}</div></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><GlassCard className="flex flex-col justify-center items-center h-40"><span className="text-gray-400 text-xs font-bold uppercase mb-2">Total Time ({range})</span><div className="text-5xl font-bold text-white">{totalHours}<span className="text-2xl text-gray-500">h</span></div></GlassCard><GlassCard className="flex flex-col justify-center items-center h-40"><span className="text-gray-400 text-xs font-bold uppercase mb-2">Most Studied</span><div className="text-3xl font-bold text-violet-400">{subjectData.sort((a,b) => b.value - a.value)[0]?.name || '-'}</div></GlassCard></div>
+            <GlassCard className="overflow-hidden"><h3 className="text-lg font-bold text-white mb-4">Study Consistency (Last 365 Days)</h3><StudyHeatmap history={data.history} /></GlassCard>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><GlassCard className="h-[350px]"><h3 className="text-lg font-bold text-white mb-4">Study Trend ({range})</h3><ResponsiveContainer width="100%" height="100%"><AreaChart data={trendData}><defs><linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 10}} /><YAxis hide /><RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', color: '#fff'}} formatter={(val) => [`${Math.round(val)}m`, 'Study Time']} /><Area type="monotone" dataKey="minutes" stroke="#8b5cf6" strokeWidth={3} fill="url(#colorTrend)" /></AreaChart></ResponsiveContainer></GlassCard><GlassCard className="h-[350px]"><h3 className="text-lg font-bold text-white mb-4">Subject Distribution</h3><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={subjectData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{subjectData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none"/>)}</Pie><RechartsTooltip contentStyle={{backgroundColor: '#18181b', borderRadius: '8px', border:'none'}} formatter={(val) => `${Math.round(val/60)}m`} /><Legend verticalAlign="bottom" iconType="circle"/></PieChart></ResponsiveContainer></GlassCard></div>
         </div>
     );
 };
 
-// --- 6. DASHBOARD (Updated with Multi-Countdown) ---
+// --- 6. DASHBOARD (Fixed Grid Countdowns) ---
 const Dashboard = ({ data, setData, goToTimer, user }) => {
   const today = new Date().toISOString().split('T')[0];
   const history = data.history || {};
@@ -588,7 +532,6 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
   const getCountdowns = () => {
       const exams = data.selectedExams || [];
       if (exams.length === 0) return [];
-
       const results = exams.map(exam => {
           const config = EXAM_CONFIG[exam];
           if (!config) return null;
@@ -597,31 +540,33 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
           const diff = target - now;
           if (diff < 0) return { exam, days: 0, hours: 0 };
           const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          return { exam, days, hours };
+          return { exam, days };
       }).filter(Boolean);
-
-      // Sort by nearest date
       return results.sort((a,b) => a.days - b.days);
   };
   const countdowns = getCountdowns();
 
   const getWeeklyData = () => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - currentDay);
+    const now = new Date(); const currentDay = now.getDay(); const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - currentDay);
     const chartData = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(startOfWeek);
-        d.setDate(startOfWeek.getDate() + i);
-        const dateStr = d.toISOString().split('T')[0];
-        chartData.push({ name: d.toLocaleDateString('en-US', { weekday: 'short' }), hours: parseFloat(((history[dateStr] || 0) / 60).toFixed(1)) });
-    }
+    for (let i = 0; i < 7; i++) { const d = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i); const dateStr = d.toISOString().split('T')[0]; chartData.push({ name: d.toLocaleDateString('en-US', { weekday: 'short' }), hours: parseFloat(((history[dateStr] || 0) / 60).toFixed(1)) }); }
     return chartData;
   };
 
-  const addTask = () => { const t = prompt("Task?"); if(t) setData(prev => ({ ...prev, tasks: [{ id: Date.now(), text: t, completed: false }, ...prev.tasks] })); };
+  const addTask = () => { 
+      const t = prompt("Task Name:"); 
+      if(!t) return;
+      // Simple prompt for subject to keep UI clean, could be a modal
+      const sub = prompt("Subject? (P, C, M, B or Leave empty)");
+      let subjectTag = "General";
+      if(sub) {
+          if(sub.toLowerCase().startsWith('p')) subjectTag = "Physics";
+          if(sub.toLowerCase().startsWith('c')) subjectTag = "Chemistry";
+          if(sub.toLowerCase().startsWith('m')) subjectTag = "Maths";
+          if(sub.toLowerCase().startsWith('b')) subjectTag = "Biology";
+      }
+      setData(prev => ({ ...prev, tasks: [{ id: Date.now(), text: t, subject: subjectTag, completed: false }, ...prev.tasks] })); 
+  };
   const toggleTask = (id) => setData(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) }));
   const removeTask = (id) => setData(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
 
@@ -630,21 +575,18 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
       <div className="text-center space-y-8 py-4">
           <div><p className="text-gray-500 text-xs font-bold tracking-widest mb-2 uppercase">TODAY'S FOCUS</p><h1 className="text-8xl font-bold text-white tracking-tighter drop-shadow-2xl">{Math.floor(todayMins/60)}h <span className="text-4xl text-gray-500">{Math.round(todayMins%60)}m</span></h1></div>
           
-          <div className="flex flex-col md:flex-row justify-center gap-4 items-center">
-              <div className="bg-[#18181b] border border-white/10 p-4 rounded-2xl flex flex-col items-center min-w-[150px]">
+          {/* GRID LAYOUT FOR COUNTDOWNS (NO SCROLL) */}
+          <div className="flex flex-wrap justify-center gap-4">
+              <div className="bg-[#18181b] border border-white/10 p-4 rounded-2xl flex flex-col items-center min-w-[140px]">
                   <div className="text-3xl font-bold text-white mb-1">{streak} <span className="text-sm text-orange-500">🔥</span></div>
                   <span className="text-[10px] text-gray-500 uppercase font-bold">Day Streak</span>
               </div>
-              
-              {/* HORIZONTAL SCROLL FOR COUNTDOWNS */}
-              <div className="flex gap-4 overflow-x-auto max-w-full md:max-w-xl pb-2 px-1 snap-x">
-                  {countdowns.map((cd, i) => (
-                      <div key={i} className="bg-[#18181b] border border-white/10 p-4 rounded-2xl flex flex-col items-center min-w-[160px] snap-center">
-                          <div className="text-3xl font-bold text-white mb-1">{cd.days} <span className="text-sm text-violet-500">d</span></div>
-                          <span className="text-[10px] text-gray-500 uppercase font-bold truncate max-w-[140px]" title={cd.exam}>{cd.exam}</span>
-                      </div>
-                  ))}
-              </div>
+              {countdowns.map((cd, i) => (
+                  <div key={i} className="bg-[#18181b] border border-white/10 p-4 rounded-2xl flex flex-col items-center min-w-[140px]">
+                      <div className="text-3xl font-bold text-white mb-1">{cd.days} <span className="text-sm text-violet-500">d</span></div>
+                      <span className="text-[10px] text-gray-500 uppercase font-bold truncate max-w-[120px]" title={cd.exam}>{cd.exam.split(' ')[0]} {cd.exam.split(' ').pop()}</span>
+                  </div>
+              ))}
           </div>
       </div>
 
@@ -667,10 +609,16 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
 
         <GlassCard>
            <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">Tasks</h3><button onClick={addTask} className="text-xs px-3 py-1 bg-white/10 text-white rounded hover:bg-white/20">+ Add</button></div>
-           <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2">
+           <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
              {data.tasks.map(task => (
                <div key={task.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-violet-500/50 transition cursor-pointer">
-                 <div onClick={() => toggleTask(task.id)} className="flex items-center gap-3"><div className={`w-5 h-5 rounded-full border-2 ${task.completed ? 'bg-violet-500 border-violet-500' : 'border-gray-600'}`}>{task.completed && <CheckCircle size={12} className="text-white mx-auto mt-0.5" />}</div><span className={task.completed ? 'text-gray-500 line-through text-sm' : 'text-gray-200 text-sm'}>{task.text}</span></div>
+                 <div onClick={() => toggleTask(task.id)} className="flex items-center gap-3">
+                     <div className={`w-5 h-5 rounded-full border-2 ${task.completed ? 'bg-violet-500 border-violet-500' : 'border-gray-600'}`}>{task.completed && <CheckCircle size={12} className="text-white mx-auto mt-0.5" />}</div>
+                     <div>
+                         <span className={`block ${task.completed ? 'text-gray-500 line-through' : 'text-gray-200'} text-sm`}>{task.text}</span>
+                         {task.subject && <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">{task.subject}</span>}
+                     </div>
+                 </div>
                  <button onClick={() => removeTask(task.id)} className="text-gray-600 hover:text-red-500"><X size={14}/></button>
                </div>
              ))}
@@ -714,10 +662,7 @@ export default function App() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             const userData = docSnap.data();
-            // Handle legacy data (convert string to array if needed)
-            if (userData.selectedExam && !userData.selectedExams) {
-                userData.selectedExams = [userData.selectedExam];
-            }
+            if (userData.selectedExam && !userData.selectedExams) userData.selectedExams = [userData.selectedExam];
             setData(userData);
             if (!userData.selectedExams || userData.selectedExams.length === 0) setShowExamSelect(true); 
         } else {
@@ -794,7 +739,7 @@ export default function App() {
         </nav>
       </aside>
 
-      <main className="md:ml-20 flex-1 p-6 md:p-10 pb-24 h-screen overflow-y-auto">
+      <main className="md:ml-20 flex-1 p-6 md:p-10 pb-24 h-screen overflow-y-auto custom-scrollbar">
         <div className="flex justify-between items-center mb-8 sticky top-0 bg-[#09090b]/90 backdrop-blur-md z-30 py-2 -mt-4 border-b border-white/5">
            <h2 className="text-xl font-bold text-gray-200 capitalize flex items-center gap-2">
              {view === 'kpp' ? 'Physics KPP' : view}
