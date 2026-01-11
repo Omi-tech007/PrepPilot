@@ -4,7 +4,7 @@ import {
   Play, Pause, CheckCircle, X, ChevronRight, 
   Plus, Trash2, FileText, TrendingUp, LogOut,
   Timer as TimerIcon, StopCircle, Target, User,
-  Settings, Image as ImageIcon, ExternalLink
+  Settings, Image as ImageIcon, ExternalLink, Maximize, Minimize
 } from 'lucide-react';
 import { 
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -19,7 +19,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * JEEPLANET PRO - v16.0 (Floating Timer + Custom BG + Subject Lock)
+ * JEEPLANET PRO - v17.0 (Fullscreen + Distraction Free Mode)
  */
 
 // --- CONSTANTS ---
@@ -38,7 +38,7 @@ const INITIAL_DATA = {
   history: {}, 
   xp: 0, 
   darkMode: true,
-  bgImage: "" // New: For custom timer background
+  bgImage: ""
 };
 
 // --- UTILITY COMPONENTS ---
@@ -120,7 +120,7 @@ const LoginScreen = () => {
   );
 };
 
-// --- 2. FOCUS TIMER (Floating + Custom BG) ---
+// --- 2. FOCUS TIMER (Distraction Free + Fullscreen) ---
 const FocusTimer = ({ data, setData, onSaveSession }) => {
   const [mode, setMode] = useState('stopwatch'); 
   const [timeLeft, setTimeLeft] = useState(0); 
@@ -128,10 +128,28 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
   const [isActive, setIsActive] = useState(false);
   const [selectedSub, setSelectedSub] = useState(SUBJECTS[0]);
   const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
-  // Floating Window Refs
+  // Refs
+  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
+
+  // Fullscreen Handler
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+        containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(err => alert("Fullscreen blocked"));
+    } else {
+        document.exitFullscreen().then(() => setIsFullscreen(false));
+    }
+  };
+
+  // Sync fullscreen state with browser events (e.g. if user presses Esc)
+  useEffect(() => {
+      const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+      document.addEventListener("fullscreenchange", handleFsChange);
+      return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
 
   // Timer Logic & Floating Window Update
   useEffect(() => {
@@ -142,12 +160,9 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
            let newVal = mode === 'timer' ? prev - 1 : prev + 1;
            if (mode === 'timer' && newVal <= 0) { setIsActive(false); alert("Timer Finished!"); return 0; }
            
-           // Update Floating Window (PiP)
            if (document.pictureInPictureElement && canvasRef.current) {
                updatePiPCanvas(newVal);
            }
-           
-           // Update Tab Title
            document.title = `(${formatTime(newVal)}) JEEPlanet`;
            return newVal;
         });
@@ -165,13 +180,13 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
     return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  // --- FLOATING WINDOW (PiP) LOGIC ---
+  // PiP Logic
   const updatePiPCanvas = (time) => {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#8b5cf6'; // Violet color
+      ctx.fillStyle = '#8b5cf6';
       ctx.font = 'bold 80px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -186,20 +201,14 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
         const canvas = canvasRef.current;
         const video = videoRef.current;
         if (canvas && video) {
-            // Initial draw
             updatePiPCanvas(timeLeft);
-            // Stream canvas to video
             const stream = canvas.captureStream();
             video.srcObject = stream;
-            // Play video (required for PiP)
             await video.play();
             await video.requestPictureInPicture();
         }
       }
-    } catch (err) {
-      console.error(err);
-      alert("Floating mode failed. Try using Chrome/Edge on Desktop.");
-    }
+    } catch (err) { console.error(err); alert("Floating mode failed. Try Chrome Desktop."); }
   };
 
   const handleStart = () => { if (mode === 'timer' && timeLeft === 0) setTimeLeft(initialTimerTime * 60); setIsActive(true); };
@@ -218,6 +227,7 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
 
   return (
     <div 
+        ref={containerRef}
         className="h-full flex flex-col relative overflow-hidden rounded-3xl transition-all duration-500 bg-cover bg-center"
         style={{ backgroundImage: data.bgImage ? `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), url(${data.bgImage})` : 'none' }}
     >
@@ -235,6 +245,9 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
           </div>
           <div className="flex gap-2">
              <button onClick={togglePiP} className="p-2 bg-[#18181b]/90 border border-white/10 rounded-full text-gray-400 hover:text-white transition" title="Floating Timer"><ExternalLink size={20}/></button>
+             <button onClick={toggleFullscreen} className="p-2 bg-[#18181b]/90 border border-white/10 rounded-full text-gray-400 hover:text-white transition" title="Fullscreen">
+                 {isFullscreen ? <Minimize size={20}/> : <Maximize size={20}/>}
+             </button>
              <button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-[#18181b]/90 border border-white/10 rounded-full text-gray-400 hover:text-white transition"><Settings size={20}/></button>
           </div>
       </div>
@@ -244,43 +257,47 @@ const FocusTimer = ({ data, setData, onSaveSession }) => {
           {showSettings && (
               <motion.div initial={{opacity:0, y:-20}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-20}} className="absolute top-20 right-4 z-30 bg-[#18181b] border border-white/10 p-4 rounded-xl shadow-2xl w-72">
                   <h4 className="text-white font-bold mb-3 flex items-center gap-2"><ImageIcon size={16}/> Custom Background</h4>
-                  <input 
-                    type="text" 
-                    placeholder="Paste Image URL here..." 
-                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-white mb-2 outline-none focus:border-violet-500"
-                    value={data.bgImage || ''}
-                    onChange={(e) => setData({...data, bgImage: e.target.value})}
-                  />
+                  <input type="text" placeholder="Paste Image URL here..." className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-white mb-2 outline-none focus:border-violet-500" value={data.bgImage || ''} onChange={(e) => setData({...data, bgImage: e.target.value})} />
                   <div className="flex justify-end"><button onClick={() => setData({...data, bgImage: ''})} className="text-xs text-red-400 hover:text-red-300">Remove Image</button></div>
               </motion.div>
           )}
       </AnimatePresence>
 
       <div className="flex-1 flex flex-col items-center justify-center gap-8 z-10">
-         <div className="flex bg-white/5 backdrop-blur p-1 rounded-lg">
-             <button onClick={() => { setMode('stopwatch'); setTimeLeft(0); setIsActive(false); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'stopwatch' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Stopwatch</button>
-             <button onClick={() => { setMode('timer'); setTimeLeft(initialTimerTime*60); setIsActive(false); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'timer' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Timer</button>
-         </div>
+         
+         {/* --- 1. TOGGLES DISAPPEAR WHEN ACTIVE --- */}
+         {!isActive && (
+             <div className="flex bg-white/5 backdrop-blur p-1 rounded-lg animate-in fade-in zoom-in duration-300">
+                 <button onClick={() => { setMode('stopwatch'); setTimeLeft(0); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'stopwatch' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Stopwatch</button>
+                 <button onClick={() => { setMode('timer'); setTimeLeft(initialTimerTime*60); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'timer' ? 'bg-violet-600 text-white' : 'text-gray-400'}`}>Timer</button>
+             </div>
+         )}
 
          <div className="text-center">
-             <div className="text-[8rem] md:text-[10rem] font-bold font-mono tracking-tighter leading-none text-white tabular-nums drop-shadow-2xl">{formatTime(timeLeft)}</div>
+             <div className="text-[8rem] md:text-[12rem] font-bold font-mono tracking-tighter leading-none text-white tabular-nums drop-shadow-2xl transition-all">{formatTime(timeLeft)}</div>
              {mode === 'timer' && !isActive && (<div className="mt-4 flex items-center justify-center gap-2"><span className="text-gray-400">Set Minutes:</span><input type="number" value={initialTimerTime} onChange={(e) => { const val = parseInt(e.target.value) || 0; setInitialTimerTime(val); setTimeLeft(val * 60); }} className="bg-white/10 border border-white/10 rounded px-2 py-1 w-20 text-center text-white font-bold backdrop-blur" /></div>)}
          </div>
 
-         <div className="bg-[#18181b]/90 backdrop-blur border border-white/10 p-2 rounded-2xl flex items-center gap-4 shadow-2xl">
-            <select 
-                className={`appearance-none bg-[#27272a] hover:bg-[#3f3f46] text-white py-3 pl-4 pr-8 rounded-xl font-bold outline-none cursor-pointer transition-colors ${isActive ? 'opacity-50 cursor-not-allowed' : ''}`} 
-                value={selectedSub} 
-                onChange={(e) => setSelectedSub(e.target.value)} 
-                disabled={isActive} // LOCK SUBJECT WHEN ACTIVE
-            >
-              {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+         <div className="bg-[#18181b]/90 backdrop-blur border border-white/10 p-2 rounded-2xl flex items-center gap-4 shadow-2xl transition-all duration-500">
+            
+            {/* --- 2. SUBJECT SELECTOR DISAPPEARS (REPLACED BY TEXT) --- */}
+            {isActive ? (
+                <div className="px-6 py-3 font-bold text-violet-400 flex items-center gap-2 bg-white/5 rounded-xl border border-white/5">
+                    <div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>
+                    Studying: {selectedSub}
+                </div>
+            ) : (
+                <select className="appearance-none bg-[#27272a] hover:bg-[#3f3f46] text-white py-3 pl-4 pr-8 rounded-xl font-bold outline-none cursor-pointer transition-colors" value={selectedSub} onChange={(e) => setSelectedSub(e.target.value)}>
+                  {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+            )}
+
             {!isActive ? (
                 <button onClick={handleStart} className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Play size={20} fill="currentColor" /> {timeLeft > 0 && mode === 'timer' && timeLeft < initialTimerTime*60 ? "Resume" : "Start"}</button>
             ) : (
                 <button onClick={() => setIsActive(false)} className="px-8 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-xl flex items-center gap-2 transition-transform active:scale-95"><Pause size={20} fill="currentColor" /> Pause</button>
             )}
+            
             {(timeLeft > 0 || isActive) && <button onClick={handleStop} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors border border-red-500/20"><StopCircle size={20} /></button>}
          </div>
       </div>
@@ -456,6 +473,41 @@ const Dashboard = ({ data, setData, goToTimer, user }) => {
              {data.tasks.length === 0 && <div className="text-center text-gray-600 py-4">No tasks today.</div>}
            </div>
       </GlassCard>
+    </div>
+  );
+};
+
+// --- 6. MOCK TEST TRACKER ---
+const MockTestTracker = ({ data, setData }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [filterType, setFilterType] = useState('All'); 
+  const [testType, setTestType] = useState('Mains');
+  const [newTest, setNewTest] = useState({ name: '', date: '', p: '', c: '', m: '', maxMarks: 300 });
+
+  const addTest = () => {
+    if (!newTest.name || !newTest.date) return;
+    const p = parseFloat(newTest.p) || 0;
+    const c = parseFloat(newTest.c) || 0;
+    const m = parseFloat(newTest.m) || 0;
+    const total = p + c + m;
+    const max = testType === 'Mains' ? 300 : (parseInt(newTest.maxMarks) || 360);
+    const testEntry = { id: Date.now(), type: testType, name: newTest.name, date: newTest.date, p, c, m, total, maxMarks: max };
+
+    setData(prev => ({ ...prev, mockTests: [...(prev.mockTests || []), testEntry] }));
+    setIsAdding(false);
+    setNewTest({ name: '', date: '', p: '', c: '', m: '', maxMarks: 300 });
+  };
+
+  const deleteTest = (id) => { if(window.confirm("Delete record?")) setData(prev => ({ ...prev, mockTests: prev.mockTests.filter(t => t.id !== id) })); };
+  const filteredTests = (data.mockTests || []).filter(t => { if (filterType === 'All') return true; return t.type === filterType || (!t.type && filterType === 'Mains'); });
+  const sortedTests = [...filteredTests].sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  return (
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="flex justify-between items-center gap-4"><div><h1 className="text-3xl font-bold text-white mb-2">Mock Test Analysis</h1><p className="text-gray-400">Scores by Subject (Stacked)</p></div><div className="flex gap-2">{['All', 'Mains', 'Advanced'].map(t => (<button key={t} onClick={() => setFilterType(t)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${filterType===t ? 'bg-violet-600 text-white border-violet-600' : 'border-white/10 text-gray-400'}`}>{t}</button>))}</div><button onClick={() => setIsAdding(!isAdding)} className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold flex items-center gap-2">{isAdding ? <X size={18}/> : <Plus size={18}/>} {isAdding ? 'Cancel' : 'Log Test'}</button></div>
+      {isAdding && (<GlassCard className="border-t-4 border-t-violet-500"><div className="flex gap-4 mb-6">{['Mains', 'Advanced'].map(t => (<label key={t} className="flex items-center gap-2 cursor-pointer"><input type="radio" className="accent-violet-500" checked={testType === t} onChange={() => setTestType(t)} /><span className={testType === t ? 'text-white font-bold' : 'text-gray-400'}>JEE {t}</span></label>))}</div><div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end"><div className="col-span-2 space-y-2"><label className="text-xs text-gray-400 font-bold uppercase">Name</label><input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.name} onChange={e => setNewTest({...newTest, name: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-gray-400 font-bold uppercase">Date</label><input type="date" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.date} onChange={e => setNewTest({...newTest, date: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-violet-400 font-bold uppercase">Physics</label><input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.p} onChange={e => setNewTest({...newTest, p: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-green-400 font-bold uppercase">Chem</label><input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.c} onChange={e => setNewTest({...newTest, c: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-blue-400 font-bold uppercase">Maths</label><input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.m} onChange={e => setNewTest({...newTest, m: e.target.value})} /></div></div>{testType === 'Advanced' && <div className="mt-4"><input type="number" placeholder="Total Max Marks (e.g. 360)" className="bg-white/5 border border-white/10 rounded-lg p-3 text-white outline-none" value={newTest.maxMarks} onChange={e => setNewTest({...newTest, maxMarks: e.target.value})} /></div>}<button onClick={addTest} className="mt-6 w-full py-3 font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700">Save Score</button></GlassCard>)}
+      {sortedTests.length > 0 ? (<GlassCard className="h-[400px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={sortedTests} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff'}} /><Legend iconType="circle" /><Bar dataKey="p" name="Physics" stackId="a" fill="#8b5cf6" barSize={40} radius={[0,0,4,4]} /><Bar dataKey="c" name="Chemistry" stackId="a" fill="#10b981" barSize={40} /><Bar dataKey="m" name="Maths" stackId="a" fill="#3b82f6" barSize={40} radius={[4,4,0,0]} /></BarChart></ResponsiveContainer></GlassCard>) : <div className="text-center py-10 text-gray-500">No tests logged.</div>}
+      <div className="grid gap-3">{sortedTests.slice().reverse().map(test => (<div key={test.id} className="group bg-[#121212] border border-white/10 p-4 rounded-xl flex items-center justify-between hover:border-white/20 transition"><div className="flex gap-4 items-center"><div className={`w-1 h-12 rounded-full ${test.type === 'Advanced' ? 'bg-orange-500' : 'bg-violet-500'}`}></div><div><div className="flex items-center gap-3"><h3 className="font-bold text-white">{test.name}</h3><span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${test.type === 'Advanced' ? 'bg-orange-500/20 text-orange-400' : 'bg-violet-500/20 text-violet-400'}`}>{test.type || 'Mains'}</span></div><div className="text-xs text-gray-500 mt-1">{test.date}</div><div className="flex gap-4 mt-2 text-sm"><span className="text-violet-400">P: {test.p}</span><span className="text-green-400">C: {test.c}</span><span className="text-blue-400">M: {test.m}</span></div></div></div><div className="flex items-center gap-6"><div className="text-right"><div className="text-2xl font-bold text-white">{test.total} <span className="text-sm text-gray-500 font-normal">/ {test.maxMarks || 300}</span></div><div className="text-xs text-gray-500 uppercase">{Math.round((test.total / (test.maxMarks || 300)) * 100)}%</div></div><button onClick={() => deleteTest(test.id)} className="p-2 text-gray-600 hover:text-red-500 transition" title="Delete Test Record"><Trash2 size={20} /></button></div></div>))}</div>
     </div>
   );
 };
