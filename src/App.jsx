@@ -6,7 +6,7 @@ import {
   Timer as TimerIcon, StopCircle, Target, User,
   Settings, Image as ImageIcon, ExternalLink, Maximize, Minimize,
   PieChart as PieChartIcon, Upload, Bell, Calendar, Edit3, Mail, Lock, KeyRound, CheckSquare,
-  Tag, Menu
+  Tag, Menu, HelpCircle, MessageSquare
 } from 'lucide-react';
 import { 
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -29,7 +29,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * PREPPILOT - v33.0 (Crash Fixed + Broad Sidebar Layout)
+ * PREPPILOT - v35.0 (Calendar Grid Heatmap)
  */
 
 // --- CONSTANTS ---
@@ -61,7 +61,6 @@ const THEME_COLORS = [
 ];
 
 const getThemeStyles = (themeName) => {
-  // Fallback to Violet if themeName is undefined
   const safeName = themeName || 'Violet';
   const map = {
     'Teal': { bg: 'bg-teal-600', hover: 'hover:bg-teal-700', text: 'text-teal-500', border: 'border-teal-500', light: 'bg-teal-500/20', stroke: '#14b8a6', ring: 'ring-teal-500' },
@@ -114,46 +113,71 @@ const GlassCard = ({ children, className = "", hover = false, isDark = true }) =
   </motion.div>
 );
 
+// --- NEW CALENDAR HEATMAP (12 PARTS, 7 COLUMNS) ---
 const StudyHeatmap = ({ history, theme, isDark }) => {
-  const generateYearData = () => {
-    const days = []; const today = new Date(); const end = today; const start = new Date(end); start.setDate(end.getDate() - 364); 
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(start); d.setDate(start.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0]; const mins = history[dateStr] || 0;
-      let intensity = 0; if (mins > 0) intensity = 1; if (mins > 60) intensity = 2; if (mins > 180) intensity = 3; if (mins > 360) intensity = 4;
-      days.push({ date: dateStr, intensity, dayOfWeek: d.getDay() });
-    }
-    return days;
-  };
-  const data = generateYearData();
-  
-  const getCellColor = (intensity) => {
-      if (intensity === 0) return isDark ? 'bg-gray-800' : 'bg-gray-200';
-      if (intensity === 1) return `${theme.light} opacity-40`;
-      if (intensity === 2) return `${theme.light} opacity-70`;
-      if (intensity === 3) return theme.bg;
-      return `${theme.bg} shadow-lg`;
+  const year = new Date().getFullYear();
+  const months = Array.from({ length: 12 }, (_, i) => i);
+
+  // Helper to get color based on study minutes
+  const getCellColor = (minutes) => {
+      if (!minutes) return isDark ? 'bg-white/5' : 'bg-gray-100'; // Empty
+      if (minutes > 0 && minutes <= 60) return `${theme.light} opacity-60`;
+      if (minutes > 60 && minutes <= 180) return `${theme.light} opacity-100`;
+      if (minutes > 180 && minutes <= 360) return theme.bg;
+      return `${theme.bg} brightness-110 shadow-[0_0_8px_rgba(255,255,255,0.3)]`;
   };
 
   return (
-    <div className="w-full overflow-x-auto pb-2 no-scrollbar">
-      <div className="flex flex-col gap-1 min-w-[600px]">
-         <div className="grid grid-rows-7 grid-flow-col gap-1 h-[100px]">
-            {data.map((day) => (
-              <div key={day.date} title={`${day.date}: ${Math.round((history[day.date]||0)/60)}h`}
-                className={`w-3 h-3 rounded-sm transition-all hover:scale-125 ${getCellColor(day.intensity)}`}
-              />
-            ))}
-         </div>
-         <div className="flex justify-between text-[10px] text-gray-500 font-bold px-2 uppercase tracking-widest">
-             <span>Jan</span><span>Mar</span><span>May</span><span>Jul</span><span>Sep</span><span>Nov</span><span>Dec</span>
-         </div>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {months.map(monthIndex => {
+        // Calculate days for specific month
+        const date = new Date(year, monthIndex, 1);
+        const monthName = date.toLocaleString('default', { month: 'long' });
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const startDay = date.getDay(); // 0 = Sun, 1 = Mon...
+        
+        // Generate array for grid slots (padding + actual days)
+        const slots = [];
+        for(let i=0; i<startDay; i++) slots.push(null);
+        for(let i=1; i<=daysInMonth; i++) {
+            const dayStr = `${year}-${String(monthIndex+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+            slots.push({ date: dayStr, day: i, mins: history[dayStr] || 0 });
+        }
+
+        return (
+          <div key={monthIndex} className={`p-4 rounded-2xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-gray-100 shadow-sm'}`}>
+            <h4 className={`text-sm font-bold mb-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{monthName}</h4>
+            
+            {/* Weekday Headers (7 Columns) */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {['S','M','T','W','T','F','S'].map(d => (
+                <div key={d} className="text-[10px] text-center text-gray-500 font-bold">{d}</div>
+              ))}
+            </div>
+
+            {/* Days Grid (7 Columns) */}
+            <div className="grid grid-cols-7 gap-1.5">
+              {slots.map((slot, k) => {
+                if(!slot) return <div key={k} className="w-full h-full" />; // Empty slot for offset
+                return (
+                  <div 
+                    key={k}
+                    title={`${slot.date}: ${Math.round(slot.mins/60)}h`}
+                    className={`aspect-square rounded-md transition-all hover:scale-110 cursor-pointer ${getCellColor(slot.mins)}`}
+                  >
+                    {/* Optional: Show day number if needed, keeping it clean for heatmap style */}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-// --- SETTINGS VIEW ---
+// --- SETTINGS VIEW (WITH SUPPORT SECTION) ---
 const SettingsView = ({ data, setData, user, onBack, theme, isDark }) => {
   const currentTheme = data.settings?.theme || 'Violet';
   const currentMode = data.settings?.mode || 'Dark';
@@ -173,16 +197,35 @@ const SettingsView = ({ data, setData, user, onBack, theme, isDark }) => {
         </button>
         <div><h1 className={`text-3xl font-bold ${textPrimary}`}>Settings</h1><p className={textSecondary}>Manage your account and preferences</p></div>
       </div>
+      
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <GlassCard isDark={isDark}>
-          <h3 className={`flex items-center gap-2 text-xl font-bold ${textPrimary} mb-6`}><User size={24} className={theme.text} /> Profile</h3>
-          <div className={`flex items-center gap-4 mb-8 p-4 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-gray-50 border-black/5'}`}>
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase border-2 ${theme.border} bg-gray-800`}>{user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full rounded-full object-cover" /> : username[0]}</div>
-            <div><h4 className={`${textPrimary} font-bold text-lg`}>{user.displayName || "Pilot"}</h4><p className={textSecondary + " text-sm"}>{user.email}</p></div>
-          </div>
-          <div className="space-y-4"><label className="text-xs font-bold text-gray-500 uppercase">Username</label><div className="flex gap-2"><input type="text" value={username} onChange={(e) => handleUpdate('username', e.target.value)} className={`flex-1 border rounded-xl px-4 py-3 outline-none transition focus:${theme.border} ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}/></div></div>
-        </GlassCard>
-        <GlassCard isDark={isDark}>
+        {/* Left Column */}
+        <div className="space-y-6">
+            <GlassCard isDark={isDark}>
+              <h3 className={`flex items-center gap-2 text-xl font-bold ${textPrimary} mb-6`}><User size={24} className={theme.text} /> Profile</h3>
+              <div className={`flex items-center gap-4 mb-8 p-4 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-gray-50 border-black/5'}`}>
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase border-2 ${theme.border} bg-gray-800`}>{user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full rounded-full object-cover" /> : username[0]}</div>
+                <div><h4 className={`${textPrimary} font-bold text-lg`}>{user.displayName || "Pilot"}</h4><p className={textSecondary + " text-sm"}>{user.email}</p></div>
+              </div>
+              <div className="space-y-4"><label className="text-xs font-bold text-gray-500 uppercase">Username</label><div className="flex gap-2"><input type="text" value={username} onChange={(e) => handleUpdate('username', e.target.value)} className={`flex-1 border rounded-xl px-4 py-3 outline-none transition focus:${theme.border} ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}/></div></div>
+            </GlassCard>
+
+            {/* SUPPORT SECTION */}
+            <GlassCard isDark={isDark}>
+                <h3 className={`flex items-center gap-2 text-xl font-bold ${textPrimary} mb-4`}><HelpCircle size={24} className={theme.text} /> Support & Feedback</h3>
+                <p className={`${textSecondary} text-sm mb-6 leading-relaxed`}>Need help? Found a bug, or have a feature request? Your feedback is invaluable for improving <strong>PrepPilot</strong>.</p>
+                <div className={`p-4 rounded-xl border flex flex-col items-center text-center gap-3 ${isDark ? 'bg-black/20 border-white/5' : 'bg-gray-50 border-black/5'}`}>
+                    <MessageSquare size={32} className={theme.text} />
+                    <div>
+                        <p className={`text-sm font-bold ${textPrimary} mb-1`}>Contact Developer</p>
+                        <a href="mailto:omkarbg0110@gmail.com" className={`text-lg font-bold hover:underline ${theme.text}`}>omkarbg0110@gmail.com</a>
+                    </div>
+                </div>
+            </GlassCard>
+        </div>
+
+        {/* Right Column */}
+        <GlassCard isDark={isDark} className="h-full">
           <h3 className={`flex items-center gap-2 text-xl font-bold ${textPrimary} mb-6`}><ImageIcon size={24} className={theme.text} /> Appearance</h3>
           <div className="mb-8"><label className="text-xs font-bold text-gray-500 uppercase mb-3 block">Theme</label><div className="grid grid-cols-2 gap-3">{THEME_COLORS.map((t) => { const isActive = currentTheme === t.name; return ( <button key={t.name} onClick={() => handleUpdate('theme', t.name)} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isActive ? `${theme.light} ${theme.border}` : `bg-transparent ${isDark ? 'border-white/10 hover:border-white/30' : 'border-black/10 hover:border-black/30'}`}`}><div className="w-4 h-4 rounded-full" style={{ backgroundColor: t.hex }}></div><span className={`text-sm font-bold ${isActive ? textPrimary : textSecondary}`}>{t.name}</span>{isActive && <CheckCircle size={16} className={theme.text} />}</button> )})}</div></div>
           <div><label className="text-xs font-bold text-gray-500 uppercase mb-3 block">Display Mode</label><button onClick={() => handleUpdate('mode', currentMode === 'Dark' ? 'Light' : 'Dark')} className={`w-full flex items-center justify-between p-4 rounded-xl border transition ${isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200'}`}><span className={`text-sm font-bold ${textPrimary}`}>{currentMode} Mode</span><div className={`w-12 h-6 rounded-full border border-white/10 relative transition-colors ${currentMode === 'Dark' ? theme.bg : 'bg-gray-400'}`}><div className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow-sm transition-all ${currentMode === 'Dark' ? 'left-6' : 'left-1'}`} /></div></button></div>
@@ -433,10 +476,10 @@ const Analysis = ({ data, theme, isDark }) => {
                 </GlassCard>
             </div>
             
-            <GlassCard isDark={isDark}>
-                <h3 className={`text-lg font-bold ${textCol} mb-4`}>Study Heatmap</h3>
+            <div className="w-full">
+                <h3 className={`text-lg font-bold ${textCol} mb-4`}>Yearly Activity</h3>
                 <StudyHeatmap history={data.history} theme={theme} isDark={isDark} />
-            </GlassCard>
+            </div>
             
             {/* Organized Grid for Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
