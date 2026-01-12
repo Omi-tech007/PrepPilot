@@ -6,7 +6,7 @@ import {
   Timer as TimerIcon, StopCircle, Target, User,
   Settings, Image as ImageIcon, ExternalLink, Maximize, Minimize,
   PieChart as PieChartIcon, Upload, Bell, Calendar, Edit3, Mail, Lock, KeyRound, CheckSquare,
-  Tag, Menu, HelpCircle, MessageSquare, Send, Bot, Sparkles, ArrowRight
+  Tag, Menu, HelpCircle, MessageSquare, Send, Bot, Sparkles, ArrowRight, Paperclip, Image as ImgIcon
 } from 'lucide-react';
 import { 
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -30,7 +30,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "./firebase"; 
 
 /**
- * PREPPILOT - v41.0 (Rich Text Chat + Smart Formatting)
+ * PREPPILOT - v42.0 (Image Support + Chat Save + Math Formatting)
  */
 
 // --- CONSTANTS ---
@@ -104,57 +104,48 @@ const getUserSubjects = (selectedExams) => {
   });
 };
 
-// --- UTILITY: SMART TEXT FORMATTER (MARKDOWN-LITE) ---
+// --- UTILITY: SUPER SMART TEXT FORMATTER (MATH EDITION) ---
+const formatMathSymbols = (text) => {
+  if (!text) return "";
+  return text
+    .replace(/\^2/g, "²")
+    .replace(/\^3/g, "³")
+    .replace(/\\int/g, "∫")
+    .replace(/\\theta/g, "θ")
+    .replace(/\\pi/g, "π")
+    .replace(/\\alpha/g, "α")
+    .replace(/\\beta/g, "β")
+    .replace(/\\lambda/g, "λ")
+    .replace(/\\Delta/g, "Δ")
+    .replace(/\\infty/g, "∞")
+    .replace(/\\approx/g, "≈")
+    .replace(/\\neq/g, "≠")
+    .replace(/sqrt/g, "√")
+    .replace(/->/g, "→");
+};
+
 const SmartText = ({ text }) => {
   if (!text) return null;
-  
-  // 1. Split by lines
-  const lines = text.split('\n');
+  const cleanedText = formatMathSymbols(text);
+  const lines = cleanedText.split('\n');
   
   return (
     <div className="space-y-1">
       {lines.map((line, i) => {
-        // Handle Bullet Points
         if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
-          const content = line.trim().substring(2);
-          return (
-            <div key={i} className="flex gap-2 ml-2">
-              <span className="text-gray-400 mt-1.5">•</span>
-              <p className="flex-1"><FormatInline text={content} /></p>
-            </div>
-          );
+          return <div key={i} className="flex gap-2 ml-2"><span className="text-gray-400 mt-1.5">•</span><p className="flex-1"><FormatInline text={line.trim().substring(2)} /></p></div>;
         }
-        
-        // Handle Headings (Lines ending with :)
-        if (line.trim().endsWith(':')) {
-           return <h4 key={i} className="font-bold mt-3 mb-1 text-base"><FormatInline text={line} /></h4>;
-        }
-
-        // Empty lines
+        if (line.trim().endsWith(':')) return <h4 key={i} className="font-bold mt-3 mb-1 text-base"><FormatInline text={line} /></h4>;
         if (!line.trim()) return <div key={i} className="h-2"></div>;
-
-        // Standard Paragraph
         return <p key={i}><FormatInline text={line} /></p>;
       })}
     </div>
   );
 };
 
-// Helper for Inline Formatting (Bold, Math)
 const FormatInline = ({ text }) => {
-  // Split by bold markers (**)
   const parts = text.split(/(\*\*.*?\*\*)/g);
-  return (
-    <>
-      {parts.map((part, j) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={j} className="font-bold text-inherit">{part.slice(2, -2)}</strong>;
-        }
-        // Basic Math Cleanup (Visual only)
-        return <span key={j}>{part}</span>;
-      })}
-    </>
-  );
+  return <>{parts.map((part, j) => part.startsWith('**') && part.endsWith('**') ? <strong key={j} className="font-bold text-inherit">{part.slice(2, -2)}</strong> : <span key={j}>{part}</span>)}</>;
 };
 
 // --- UTILITY COMPONENTS ---
@@ -177,7 +168,6 @@ const StudyHeatmap = ({ history, theme, isDark }) => {
       if (minutes > 180 && minutes <= 360) return theme.bg;
       return `${theme.bg} brightness-110 shadow-[0_0_8px_rgba(255,255,255,0.3)]`;
   };
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {months.map(monthIndex => {
@@ -195,15 +185,8 @@ const StudyHeatmap = ({ history, theme, isDark }) => {
         return (
           <div key={monthIndex} className={`p-4 rounded-2xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-gray-100 shadow-sm'}`}>
             <h4 className={`text-sm font-bold mb-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{monthName}</h4>
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {['S','M','T','W','T','F','S'].map(d => (<div key={d} className="text-[10px] text-center text-gray-500 font-bold">{d}</div>))}
-            </div>
-            <div className="grid grid-cols-7 gap-1.5">
-              {slots.map((slot, k) => {
-                if(!slot) return <div key={k} className="w-full h-full" />;
-                return (<div key={k} title={`${slot.date}: ${Math.round(slot.mins/60)}h`} className={`aspect-square rounded-md transition-all hover:scale-110 cursor-pointer ${getCellColor(slot.mins)}`}></div>)
-              })}
-            </div>
+            <div className="grid grid-cols-7 gap-1 mb-2">{['S','M','T','W','T','F','S'].map(d => (<div key={d} className="text-[10px] text-center text-gray-500 font-bold">{d}</div>))}</div>
+            <div className="grid grid-cols-7 gap-1.5">{slots.map((slot, k) => !slot ? <div key={k} className="w-full h-full" /> : (<div key={k} title={`${slot.date}: ${Math.round(slot.mins/60)}h`} className={`aspect-square rounded-md transition-all hover:scale-110 cursor-pointer ${getCellColor(slot.mins)}`}></div>))}</div>
           </div>
         );
       })}
@@ -211,7 +194,6 @@ const StudyHeatmap = ({ history, theme, isDark }) => {
   );
 };
 
-// --- SETTINGS VIEW ---
 const SettingsView = ({ data, setData, user, onBack, theme, isDark }) => {
   const currentTheme = data.settings?.theme || 'Violet';
   const currentMode = data.settings?.mode || 'Dark';
@@ -219,7 +201,6 @@ const SettingsView = ({ data, setData, user, onBack, theme, isDark }) => {
   const handleUpdate = (field, value) => { setData(prev => ({ ...prev, settings: { ...(prev.settings || {}), [field]: value } })); };
   const textPrimary = isDark ? 'text-white' : 'text-gray-900';
   const textSecondary = isDark ? 'text-gray-400' : 'text-gray-500';
-
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
       <div className="flex items-center gap-4 mb-6">
@@ -255,93 +236,136 @@ const SettingsView = ({ data, setData, user, onBack, theme, isDark }) => {
   );
 };
 
-// --- PREPAI VIEW (WITH SMART FORMATTING) ---
+// --- PREPAI VIEW (FULL SCREEN + IMAGE + PERSISTENCE) ---
 const PrepAIView = ({ data, theme, isDark }) => {
-  const [messages, setMessages] = useState([{ role: 'model', text: 'Hello! I am PrepAI, your dedicated study companion. I have access to your tasks, syllabus, and history. How can I help you ace your exams today?' }]);
+  // Load from local storage or default
+  const loadHistory = () => {
+    const saved = localStorage.getItem('prepai_history');
+    return saved ? JSON.parse(saved) : [{ role: 'model', text: 'Hello! I am PrepAI. Ask me to solve a doubt, explain a topic, or analyze your study data. You can also upload images of questions!' }];
+  };
+
+  const [messages, setMessages] = useState(loadHistory);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [image, setImage] = useState(null);
   const textCol = isDark ? 'text-white' : 'text-gray-900';
   const bottomRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // Save history on change
+  useEffect(() => { localStorage.setItem('prepai_history', JSON.stringify(messages)); }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+
+  const clearChat = () => {
+    if(window.confirm("Delete chat history?")) {
+      const reset = [{ role: 'model', text: 'Chat cleared. Ready for new doubts!' }];
+      setMessages(reset);
+      localStorage.setItem('prepai_history', JSON.stringify(reset));
+    }
+  };
+
+  // Helper: Convert File to Base64 for Gemini
+  async function fileToGenerativePart(file) {
+    const base64EncodedDataPromise = new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+    return { inlineData: { data: await base64EncodedDataPromise, mimeType: file.type } };
+  }
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) setImage(file);
+  };
 
   const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMsg = input;
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    if (!input.trim() && !image) return;
+    const userMsg = { role: 'user', text: input, image: image ? URL.createObjectURL(image) : null };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
+    const currentImage = image; // Capture for async
+    setImage(null);
     setLoading(true);
 
     try {
       // --- API KEY HERE ---
       const genAI = new GoogleGenerativeAI("AIzaSyCUxcGF6dYqYm4uoZavFWOZyC7n795Hxso");
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // 1.5 Flash supports images
 
-      const context = `
-        SYSTEM: You are PrepAI, a specialized tutor for JEE/NEET.
-        USER DATA:
-        - Exams: ${data.selectedExams?.join(", ") || "None"}
-        - Tasks: ${data.tasks.filter(t=>!t.completed).map(t=>t.text).join(", ")}
-        - Daily Goal: ${data.dailyGoal}hrs
-        
-        INSTRUCTIONS: 
-        1. Answer doubts clearly (Physics/Chem/Math/Bio).
-        2. Use bullet points and bold text (**bold**) for key terms.
-        3. If using math, keep it simple and clean.
-        4. Be motivating but strict.
-      `;
+      const context = `SYSTEM: You are PrepAI, an expert JEE/NEET tutor. Use clear formatting. If the user sends an image, solve the question in it step-by-step.`;
+      
+      let promptParts = [context + "\n\nUser: " + userMsg.text];
+      if (currentImage) {
+        const imagePart = await fileToGenerativePart(currentImage);
+        promptParts.push(imagePart);
+      }
 
-      const prompt = `${context}\n\nUser: ${userMsg}`;
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(promptParts);
       const response = await result.response;
       setMessages(prev => [...prev, { role: 'model', text: response.text() }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', text: "I'm having trouble connecting. Please check your API key." }]);
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'model', text: "Error connecting to AI. Please check your API key and Internet." }]);
     }
     setLoading(false);
   };
 
   return (
-    <div className="h-full flex flex-col max-w-5xl mx-auto">
-      <div className={`p-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'} mb-4`}>
-        <h1 className={`text-3xl font-bold flex items-center gap-3 ${textCol}`}><Sparkles className={theme.text} /> PrepAI</h1>
-        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Your personal AI tutor tailored to your syllabus and schedule.</p>
+    <div className="h-full flex flex-col w-full relative">
+      {/* Top Bar (Full Width) */}
+      <div className={`p-4 border-b flex justify-between items-center ${isDark ? 'border-white/10 bg-[#09090b]' : 'border-gray-200 bg-white'}`}>
+        <h1 className={`text-2xl font-bold flex items-center gap-2 ${textCol}`}><Sparkles className={theme.text} /> PrepAI</h1>
+        <button onClick={clearChat} className="p-2 text-gray-500 hover:text-red-500 transition"><Trash2 size={20}/></button>
       </div>
       
-      <GlassCard isDark={isDark} className="flex-1 flex flex-col p-0 overflow-hidden mb-6">
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'model' && <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${theme.bg} text-white`}><Bot size={16} /></div>}
-              <div className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? `${theme.msgUser} text-white rounded-br-none` : `${isDark ? 'bg-white/10 text-gray-200' : 'bg-gray-100 text-gray-800'} rounded-bl-none`}`}>
-                {/* USE SMART TEXT FORMATTER */}
-                <SmartText text={msg.text} />
-              </div>
+      {/* Chat Area (Full Screen) */}
+      <div className={`flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar ${isDark ? 'bg-[#09090b]' : 'bg-gray-50'}`}>
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {msg.role === 'model' && <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 mt-1 ${theme.bg} text-white`}><Bot size={16} /></div>}
+            <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? `${theme.msgUser} text-white rounded-br-none` : `${isDark ? 'bg-white/10 text-gray-200' : 'bg-white text-gray-800'} rounded-bl-none`}`}>
+              {msg.image && <img src={msg.image} alt="User upload" className="mb-3 rounded-lg max-h-60 object-contain" />}
+              <SmartText text={msg.text} />
             </div>
-          ))}
-          {loading && <div className="flex justify-start items-center gap-2 text-xs text-gray-500 ml-11"><span className="animate-pulse">PrepAI is thinking...</span></div>}
-          <div ref={bottomRef} />
-        </div>
+          </div>
+        ))}
+        {loading && <div className="flex justify-start items-center gap-2 text-xs text-gray-500 ml-11"><span className="animate-pulse">Thinking & Solving...</span></div>}
+        <div ref={bottomRef} />
+      </div>
 
-        <div className={`p-4 border-t ${isDark ? 'border-white/10 bg-black/20' : 'border-gray-200 bg-gray-50'} flex gap-3`}>
+      {/* Input Area */}
+      <div className={`p-4 border-t ${isDark ? 'border-white/10 bg-[#09090b]' : 'border-gray-200 bg-white'}`}>
+        {image && (
+          <div className="flex items-center gap-2 mb-2 p-2 rounded bg-gray-100 dark:bg-white/10 w-fit">
+            <ImgIcon size={14} className={textCol}/> 
+            <span className={`text-xs ${textCol}`}>Image selected</span>
+            <button onClick={()=>setImage(null)}><X size={14} className="text-gray-500"/></button>
+          </div>
+        )}
+        <div className={`flex items-center gap-3 p-2 rounded-xl border ${isDark ? 'bg-black/20 border-white/10' : 'bg-gray-100 border-transparent'}`}>
+          <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageUpload} className="hidden" />
+          <button onClick={() => fileInputRef.current.click()} className={`p-2 rounded-lg text-gray-500 hover:bg-gray-200 dark:hover:bg-white/10 ${image ? theme.text : ''}`}>
+            <Paperclip size={20} />
+          </button>
           <input 
             type="text" 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask a doubt, request a plan, or vent about stress..." 
+            placeholder="Type a math problem, or upload a photo..." 
             className={`flex-1 bg-transparent outline-none text-sm ${textCol} placeholder-gray-500`}
           />
-          <button onClick={handleSend} disabled={loading} className={`p-3 rounded-xl ${theme.bg} text-white hover:scale-105 transition disabled:opacity-50`}>
+          <button onClick={handleSend} disabled={loading} className={`p-2 rounded-lg ${theme.bg} text-white hover:scale-105 transition disabled:opacity-50`}>
             <Send size={20} />
           </button>
         </div>
-      </GlassCard>
+      </div>
     </div>
   );
 };
 
-// --- DASHBOARD (WITH SAFE AI SLIDE) ---
+// --- DASHBOARD ---
 const Dashboard = ({ data, setData, goToTimer, setView, user, theme, isDark }) => {
   const today = new Date().toISOString().split('T')[0];
   const history = data.history || {}; const todayMins = history[today] || 0;
@@ -354,7 +378,6 @@ const Dashboard = ({ data, setData, goToTimer, setView, user, theme, isDark }) =
   const removeTask = (id) => setData(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
   const textCol = isDark ? 'text-white' : 'text-gray-900';
 
-  // --- AI BRIEFING ---
   const [briefing, setBriefing] = useState("");
   const [loadingBrief, setLoadingBrief] = useState(false);
 
@@ -386,13 +409,11 @@ const Dashboard = ({ data, setData, goToTimer, setView, user, theme, isDark }) =
           </div>
       </div>
 
-      {/* AI SUMMARY SLIDE (SAFE STYLING) */}
       <GlassCard className={`relative overflow-hidden ${isDark ? `border-${theme.border} bg-white/5` : 'bg-white border-gray-200'}`} isDark={isDark}>
         <div className="flex justify-between items-start gap-4">
             <div>
                 <h3 className={`font-bold flex items-center gap-2 ${textCol} mb-2`}><Sparkles size={18} className="text-yellow-400" /> AI Daily Briefing</h3>
                 {briefing ? (
-                    // USE SMART TEXT FORMATTER HERE TOO
                     <div className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-600'}`}><SmartText text={briefing} /></div>
                 ) : (
                     <p className="text-xs text-gray-500 italic">Get a quick summary of your progress and tasks.</p>
@@ -443,120 +464,6 @@ const ProfileDropdown = ({ user, onLogout, onChangeExam, data, setView, theme, i
   );
 };
 
-// --- OTHER COMPONENTS ---
-const Analysis = ({ data, theme, isDark }) => {
-    const textCol = isDark ? 'text-white' : 'text-gray-900';
-    const [range, setRange] = useState('Week');
-    const generateTimeline = () => { const history = data.history || {}; const now = new Date(); const timeline = []; if (range === 'Week') { const currentDay = now.getDay(); const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - currentDay); for (let i = 0; i < 7; i++) { const d = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i); const dateStr = d.toISOString().split('T')[0]; timeline.push({ name: d.toLocaleDateString('en-US', { weekday: 'short' }), minutes: history[dateStr] || 0 }); } } else if (range === 'Month') { const year = now.getFullYear(); const month = now.getMonth(); const daysInMonth = new Date(year, month + 1, 0).getDate(); for (let i = 1; i <= daysInMonth; i++) { const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`; timeline.push({ name: String(i), minutes: history[dateStr] || 0 }); } } else if (range === 'Year') { const year = now.getFullYear(); for (let i = 0; i < 12; i++) { let monthlyTotal = 0; const monthPrefix = `${year}-${String(i + 1).padStart(2, '0')}`; Object.keys(history).forEach(dateStr => { if (dateStr.startsWith(monthPrefix)) monthlyTotal += history[dateStr]; }); timeline.push({ name: new Date(year, i).toLocaleDateString('en-US', { month: 'short' }), minutes: monthlyTotal }); } } return timeline; };
-    const trendData = generateTimeline(); 
-    const totalHours = (trendData.reduce((acc, curr) => acc + curr.minutes, 0) / 60).toFixed(1);
-    const subjectData = [{ name: 'Physics', value: data.subjects["Physics"]?.timeSpent || 0 }, { name: 'Maths', value: data.subjects["Maths"]?.timeSpent || 0 }, { name: 'Chemistry', value: (data.subjects["Organic Chem"]?.timeSpent || 0) + (data.subjects["Inorganic Chem"]?.timeSpent || 0) + (data.subjects["Physical Chem"]?.timeSpent || 0) }, { name: 'Biology', value: data.subjects["Biology"]?.timeSpent || 0 }];
-    return (
-        <div className="space-y-6 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center"><div><h1 className={`text-3xl font-bold ${textCol} mb-1`}>Analysis</h1></div><div className={`flex rounded-lg p-1 ${isDark ? 'bg-white/5' : 'bg-gray-200'}`}>{['Week', 'Month', 'Year'].map(r => (<button key={r} onClick={() => setRange(r)} className={`px-4 py-2 rounded-md text-sm font-bold transition ${range === r ? `${theme.bg} text-white` : 'text-gray-500'}`}>{r}</button>))}</div></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><GlassCard isDark={isDark} className="flex flex-col justify-center items-center h-40"><span className="text-gray-500 text-xs font-bold uppercase mb-2">Total Time</span><div className={`text-5xl font-bold ${textCol}`}>{totalHours}<span className="text-2xl text-gray-500">h</span></div></GlassCard><GlassCard isDark={isDark} className="flex flex-col justify-center items-center h-40"><span className="text-gray-500 text-xs font-bold uppercase mb-2">Most Studied</span><div className={`text-3xl font-bold ${theme.text}`}>{subjectData.sort((a,b) => b.value - a.value)[0]?.name || '-'}</div></GlassCard></div>
-            <GlassCard isDark={isDark}><h3 className={`text-lg font-bold ${textCol} mb-4`}>Yearly Activity</h3><StudyHeatmap history={data.history} theme={theme} isDark={isDark} /></GlassCard>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><GlassCard isDark={isDark} className="h-[400px]"><h3 className={`text-lg font-bold ${textCol} mb-4`}>{range}ly Trend</h3><ResponsiveContainer width="100%" height="90%"><AreaChart data={trendData}><defs><linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={theme.stroke} stopOpacity={0.8}/><stop offset="95%" stopColor={theme.stroke} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark?"rgba(255,255,255,0.05)":"#eee"} /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 10}} /><YAxis hide /><RechartsTooltip contentStyle={{backgroundColor: isDark?'#18181b':'#fff', borderColor: isDark?'#27272a':'#ddd', color: isDark?'#fff':'#000'}} /><Area type="monotone" dataKey="minutes" stroke={theme.stroke} strokeWidth={3} fill="url(#colorTrend)" /></AreaChart></ResponsiveContainer></GlassCard><GlassCard isDark={isDark} className="h-[400px]"><h3 className={`text-lg font-bold ${textCol} mb-4`}>Subject Mix</h3><ResponsiveContainer width="100%" height="90%"><PieChart><Pie data={subjectData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">{subjectData.map((e, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} stroke="none"/>)}</Pie><RechartsTooltip contentStyle={{backgroundColor: isDark?'#18181b':'#fff', borderRadius:'8px', border:'none', color: isDark ? '#fff' : '#000'}} /><Legend verticalAlign="bottom"/></PieChart></ResponsiveContainer></GlassCard></div>
-        </div>
-    );
-};
-
-const Syllabus = ({ data, setData, theme, isDark }) => {
-  const mySubjects = getUserSubjects(data.selectedExams);
-  const [selectedSubject, setSelectedSubject] = useState(mySubjects[0]);
-  const [gradeView, setGradeView] = useState('11');
-  useEffect(() => { if (!mySubjects.includes(selectedSubject)) setSelectedSubject(mySubjects[0]); }, [data.selectedExams]);
-  const addChapter = () => { const name = prompt(`Enter Class ${gradeView} Chapter Name:`); const lectures = prompt("Total Main Lectures:"); if (name && lectures) { const newChapter = { id: Date.now().toString(), name, totalLectures: parseInt(lectures), lectures: new Array(parseInt(lectures)).fill(false), grade: gradeView, miscLectures: [], diby: { solved: 0, total: 0 } }; const newData = { ...data }; newData.subjects[selectedSubject].chapters.push(newChapter); setData(newData); } };
-  const updateChapter = (updated) => { const newData = { ...data }; const idx = newData.subjects[selectedSubject].chapters.findIndex(c => c.id === updated.id); newData.subjects[selectedSubject].chapters[idx] = updated; setData(newData); };
-  const deleteChapter = (id) => { const newData = { ...data }; newData.subjects[selectedSubject].chapters = newData.subjects[selectedSubject].chapters.filter(c => c.id !== id); setData(newData); };
-  const filteredChapters = data.subjects[selectedSubject]?.chapters.filter(c => c.grade === gradeView || (!c.grade && gradeView === '11')) || [];
-  const textCol = isDark ? 'text-white' : 'text-gray-900';
-  return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex justify-between items-center"><h1 className={`text-3xl font-bold ${textCol}`}>Syllabus Tracker</h1><button onClick={addChapter} className={`px-6 py-3 ${theme.bg} text-white rounded-xl font-bold flex items-center gap-2`}><Plus size={18} /> Add Chapter</button></div>
-      <div className={`flex gap-4 p-1 w-fit rounded-xl ${isDark ? 'bg-white/5' : 'bg-gray-200'}`}>{['11', '12'].map(g => <button key={g} onClick={() => setGradeView(g)} className={`px-6 py-2 rounded-lg text-sm font-bold transition ${gradeView === g ? `${theme.bg} text-white` : 'text-gray-500'}`}>Class {g}th</button>)}</div>
-      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">{mySubjects.map(s => <button key={s} onClick={() => setSelectedSubject(s)} className={`px-6 py-3 rounded-xl font-bold transition whitespace-nowrap ${selectedSubject === s ? `${isDark ? 'bg-white text-black' : 'bg-gray-800 text-white'}` : `${isDark ? 'bg-[#121212] border border-white/10 text-gray-400' : 'bg-white border border-gray-200 text-gray-500'}`}`}>{s}</button>)}</div>
-      <div className="grid gap-4">{filteredChapters.map(chapter => <ChapterItem key={chapter.id} subjectName={selectedSubject} chapter={chapter} onUpdate={updateChapter} onDelete={deleteChapter} theme={theme} isDark={isDark} />)}</div>
-    </div>
-  );
-};
-
-const ChapterItem = ({ subjectName, chapter, onUpdate, onDelete, theme, isDark }) => {
-  const [expanded, setExpanded] = useState(false);
-  const completed = chapter.lectures.filter(l => l).length;
-  const progress = chapter.totalLectures > 0 ? Math.round((completed/chapter.totalLectures)*100) : 0;
-  const toggleLec = (i) => { const newLecs = [...chapter.lectures]; newLecs[i] = !newLecs[i]; onUpdate({ ...chapter, lectures: newLecs }); };
-  const addMisc = () => { const name = prompt("Misc Lecture Name:"); const count = prompt("Number of videos:"); if(name && count) { const newMisc = { id: Date.now(), name, total: parseInt(count), checked: new Array(parseInt(count)).fill(false) }; onUpdate({ ...chapter, miscLectures: [...(chapter.miscLectures || []), newMisc] }); }};
-  const toggleMisc = (miscId, index) => { const updatedMisc = chapter.miscLectures.map(m => { if(m.id === miscId) { const newChecked = [...m.checked]; newChecked[index] = !newChecked[index]; return { ...m, checked: newChecked }; } return m; }); onUpdate({ ...chapter, miscLectures: updatedMisc }); };
-  const deleteMisc = (miscId) => { onUpdate({ ...chapter, miscLectures: chapter.miscLectures.filter(m => m.id !== miscId) }); };
-  const updateDiby = (field, val) => { onUpdate({ ...chapter, diby: { ...(chapter.diby || {solved:0, total:0}), [field]: parseInt(val) || 0 } }); };
-  const textCol = isDark ? 'text-white' : 'text-gray-900';
-  const iconClass = progress === 100 ? 'bg-green-500/20 text-green-500' : `${theme.light} ${theme.text}`;
-  return (
-    <GlassCard isDark={isDark}>
-      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
-        <div className="flex items-center gap-4"><div className={`p-3 rounded-full ${iconClass}`}>{progress===100 ? <CheckCircle size={24} /> : <BookOpen size={24} />}</div><div><h3 className={`text-xl font-bold ${textCol}`}>{chapter.name}</h3><p className="text-sm text-gray-400">{completed}/{chapter.totalLectures} Main Lecs • {progress}%</p></div></div>
-        <div className="flex gap-2"><button onClick={(e) => {e.stopPropagation(); onDelete(chapter.id);}} className="text-gray-600 hover:text-red-500"><Trash2 size={18}/></button><ChevronRight className={`transition ${expanded?'rotate-90':''}`} /></div>
-      </div>
-      {expanded && (<div className="mt-6 space-y-6"><div><h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Main Lectures</h4><div className="grid grid-cols-6 md:grid-cols-10 gap-2">{chapter.lectures.map((done, i) => <button key={i} onClick={() => toggleLec(i)} className={`p-2 rounded text-xs font-bold border transition ${done ? `${theme.bg} ${theme.border} text-white` : `border-transparent ${isDark ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-600'}`}`}>{i+1}</button>)}</div></div>{subjectName === 'Maths' && (<div className={`border p-4 rounded-xl ${isDark ? 'bg-blue-900/10 border-blue-500/20' : 'bg-blue-50 border-blue-200'}`}><h4 className="text-xs font-bold text-blue-400 uppercase mb-3 flex items-center gap-2"><Target size={14}/> DIBY Questions</h4><div className="flex items-center gap-4"><div className="flex items-center gap-2"><span className="text-sm text-gray-400">Solved:</span><input type="number" className={`w-16 border rounded px-2 py-1 text-sm ${isDark ? 'bg-black/30 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={chapter.diby?.solved || 0} onChange={e => updateDiby('solved', e.target.value)} /></div><span className="text-gray-500">/</span><div className="flex items-center gap-2"><span className="text-sm text-gray-400">Total:</span><input type="number" className={`w-16 border rounded px-2 py-1 text-sm ${isDark ? 'bg-black/30 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={chapter.diby?.total || 0} onChange={e => updateDiby('total', e.target.value)} /></div><div className="ml-auto text-blue-400 font-bold">{(chapter.diby?.total > 0 ? Math.round((chapter.diby.solved / chapter.diby.total) * 100) : 0)}% Done</div></div></div>)}<div className={`border-t pt-4 ${isDark ? 'border-white/10' : 'border-black/10'}`}><div className="flex justify-between items-center mb-3"><h4 className="text-xs font-bold text-gray-500 uppercase">Misc Topics (Extra)</h4><button onClick={addMisc} className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}>+ Add Topic</button></div>{(chapter.miscLectures || []).map(misc => (<div key={misc.id} className="mb-3"><div className="flex justify-between items-center mb-1"><span className={`text-sm ${textCol}`}>{misc.name}</span><button onClick={() => deleteMisc(misc.id)} className="text-red-500 hover:text-red-400"><X size={12}/></button></div><div className="flex flex-wrap gap-2">{misc.checked.map((done, i) => (<button key={i} onClick={() => toggleMisc(misc.id, i)} className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold border transition ${done ? 'bg-gray-600 border-gray-600 text-white' : `border-transparent ${isDark ? 'bg-white/10' : 'bg-gray-200'} text-gray-600`}`}>{i+1}</button>))}</div></div>))}</div></div>)}
-    </GlassCard>
-  );
-};
-
-const PhysicsKPP = ({ data, setData, theme, isDark }) => {
-    const [newKPP, setNewKPP] = useState({ name: '', chapter: '', attempted: false, corrected: false, myScore: 0, totalScore: 0 });
-    const physicsChapters = data.subjects['Physics']?.chapters || [];
-    const addKPP = () => { if (!newKPP.name || !newKPP.chapter) { alert("Name and Chapter required"); return; } const entry = { id: Date.now(), ...newKPP }; setData(prev => ({ ...prev, kppList: [...(prev.kppList || []), entry] })); setNewKPP({ name: '', chapter: '', attempted: false, corrected: false, myScore: 0, totalScore: 0 }); };
-    const deleteKPP = (id) => { if(window.confirm("Delete KPP?")) setData(prev => ({ ...prev, kppList: prev.kppList.filter(k => k.id !== id) })); };
-    const updateKPP = (id, field, value) => { setData(prev => ({ ...prev, kppList: prev.kppList.map(k => k.id === id ? { ...k, [field]: value } : k) })); };
-    const graphData = (data.kppList || []).slice(-7).map(k => ({ name: k.name, percentage: k.totalScore > 0 ? Math.round((k.myScore / k.totalScore) * 100) : 0 }));
-    const textCol = isDark ? 'text-white' : 'text-gray-900';
-    return (<div className="space-y-6 max-w-5xl mx-auto"><h1 className={`text-3xl font-bold ${textCol} mb-2`}>Physics KPP Tracker</h1><GlassCard className={`border-t-4 ${theme.border}`} isDark={isDark}><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><input type="text" placeholder="KPP Name" className={`border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300 text-black'}`} value={newKPP.name} onChange={e => setNewKPP({...newKPP, name: e.target.value})} /><select className={`border rounded-lg p-3 outline-none ${isDark ? 'bg-[#18181b] border-white/10 text-white' : 'bg-white border-gray-300 text-black'}`} value={newKPP.chapter} onChange={e => setNewKPP({...newKPP, chapter: e.target.value})}><option value="">Select Physics Chapter</option>{physicsChapters.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div><div className="flex flex-wrap gap-4 items-center"><label className="flex items-center gap-2 text-gray-500"><input type="checkbox" className={`w-5 h-5 ${theme.ring}`} checked={newKPP.attempted} onChange={e => setNewKPP({...newKPP, attempted: e.target.checked})} /> Attempted</label><label className="flex items-center gap-2 text-gray-500"><input type="checkbox" className="w-5 h-5" checked={newKPP.corrected} onChange={e => setNewKPP({...newKPP, corrected: e.target.checked})} /> Corrected</label><div className="flex items-center gap-2"><input type="number" placeholder="My Score" className={`w-24 border rounded-lg p-2 ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newKPP.myScore} onChange={e => setNewKPP({...newKPP, myScore: parseFloat(e.target.value)})} /><span className="text-gray-500">/</span><input type="number" placeholder="Total" className={`w-24 border rounded-lg p-2 ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newKPP.totalScore} onChange={e => setNewKPP({...newKPP, totalScore: parseFloat(e.target.value)})} /></div><button onClick={addKPP} className={`ml-auto px-6 py-2 ${theme.bg} text-white rounded-lg font-bold`}>Add KPP</button></div></GlassCard>{graphData.length > 0 && (<GlassCard className="h-[300px]" isDark={isDark}><ResponsiveContainer width="100%" height="90%"><BarChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255,255,255,0.05)" : "#eee"} vertical={false} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} /><RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: isDark ? '#18181b' : '#fff', borderColor: isDark ? '#27272a' : '#ddd', color: isDark ? '#fff' : '#000'}} /><Bar dataKey="percentage" fill={theme.stroke} radius={[4,4,0,0]} name="Score %" /></BarChart></ResponsiveContainer></GlassCard>)}<div className="grid gap-3">{(data.kppList || []).slice().reverse().map(kpp => (<div key={kpp.id} className={`border p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 ${isDark ? 'bg-[#121212] border-white/10' : 'bg-white border-gray-200'}`}><div className="flex-1"><div className="flex items-center gap-3"><span className={`font-bold text-lg ${textCol}`}>{kpp.name}</span><span className={`text-xs text-gray-500 px-2 py-1 rounded ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>{kpp.chapter}</span></div><div className="flex gap-4 mt-2 text-sm"><span className={kpp.attempted ? theme.text : "text-gray-500"}>Attempted</span><span className={kpp.corrected ? "text-green-500" : "text-gray-500"}>Corrected</span></div></div><div className="flex items-center gap-4"><div className="text-right"><div className={`font-bold text-xl ${textCol}`}>{kpp.myScore} <span className="text-gray-500 text-sm">/ {kpp.totalScore}</span></div><div className="text-xs text-gray-500">{kpp.totalScore > 0 ? Math.round((kpp.myScore/kpp.totalScore)*100) : 0}%</div></div><button onClick={() => deleteKPP(kpp.id)} className="text-gray-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>))}</div></div>);
-};
-
-const FocusTimer = ({ data, setData, onSaveSession, theme, isDark }) => {
-  const [mode, setMode] = useState('stopwatch'); const [timeLeft, setTimeLeft] = useState(0); const [initialTimerTime, setInitialTimerTime] = useState(60); const [isActive, setIsActive] = useState(false); const [showSettings, setShowSettings] = useState(false); const [isFullscreen, setIsFullscreen] = useState(false);
-  const mySubjects = getUserSubjects(data.selectedExams); const [selectedSub, setSelectedSub] = useState(mySubjects[0] || "Physics");
-  const containerRef = useRef(null); const canvasRef = useRef(null); const videoRef = useRef(null); const fileInputRef = useRef(null);
-  const handleFileUpload = (e) => { const file = e.target.files[0]; if(file) { const reader = new FileReader(); reader.onloadend = () => setData({...data, bgImage: reader.result}); reader.readAsDataURL(file); }};
-  const toggleFullscreen = () => { if (!document.fullscreenElement) containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(err => alert("Fullscreen blocked")); else document.exitFullscreen().then(() => setIsFullscreen(false)); };
-  useEffect(() => { const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement); document.addEventListener("fullscreenchange", handleFsChange); return () => document.removeEventListener("fullscreenchange", handleFsChange); }, []);
-  useEffect(() => { const video = videoRef.current; if (!video) return; const handlePause = () => setIsActive(false); const handlePlay = () => setIsActive(true); video.addEventListener('pause', handlePause); video.addEventListener('play', handlePlay); return () => { video.removeEventListener('pause', handlePause); video.removeEventListener('play', handlePlay); }; }, []);
-  useEffect(() => { let interval = null; if (isActive) { interval = setInterval(() => { setTimeLeft(prev => { let newVal = mode === 'timer' ? prev - 1 : prev + 1; if (mode === 'timer' && newVal <= 0) { setIsActive(false); alert("Timer Finished!"); return 0; } if (document.pictureInPictureElement && canvasRef.current) updatePiPCanvas(newVal); document.title = `(${formatTime(newVal)}) PrepPilot`; return newVal; }); }, 1000); } else { document.title = "PrepPilot Pro"; } return () => clearInterval(interval); }, [isActive, mode]);
-  const formatTime = (s) => { const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60; return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`; };
-  const updatePiPCanvas = (time) => { const canvas = canvasRef.current; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 80px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(formatTime(time), canvas.width / 2, canvas.height / 2); };
-  const togglePiP = async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else { const canvas = canvasRef.current; const video = videoRef.current; if (canvas && video) { updatePiPCanvas(timeLeft); const stream = canvas.captureStream(); video.srcObject = stream; await video.play(); await video.requestPictureInPicture(); } } } catch (err) { console.error(err); alert("Floating mode failed. Try Chrome Desktop."); } };
-  const handleStart = () => { if (mode === 'timer' && timeLeft === 0) setTimeLeft(initialTimerTime * 60); setIsActive(true); };
-  const handleStop = () => { setIsActive(false); let timeSpentSeconds = mode === 'stopwatch' ? timeLeft : (initialTimerTime * 60) - timeLeft; if (timeSpentSeconds > 60) { if(window.confirm(`Save ${Math.floor(timeSpentSeconds/60)} minutes of study?`)) { onSaveSession(selectedSub, timeSpentSeconds); setTimeLeft(0); } } else { setTimeLeft(0); } };
-  const today = new Date().toISOString().split('T')[0]; const todayMins = data.history?.[today] || 0; const percent = Math.min((todayMins / (data.dailyGoal * 60)) * 100, 100);
-
-  return (
-    <div ref={containerRef} className={`h-full flex flex-col relative overflow-hidden rounded-3xl transition-all duration-500 bg-cover bg-center ${isDark ? 'bg-black' : 'bg-gray-100'}`} style={{ backgroundImage: data.bgImage ? `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${data.bgImage})` : 'none' }}>
-      <canvas ref={canvasRef} width={400} height={200} className="hidden" /><video ref={videoRef} className="hidden" muted />
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20"><div className={`backdrop-blur border rounded-full py-2 px-4 flex items-center gap-3 w-64 shadow-lg ${isDark ? 'bg-[#18181b]/90 border-white/10' : 'bg-white/90 border-black/10'}`}><div className="flex flex-col flex-1"><div className="flex justify-between text-[10px] uppercase font-bold text-gray-500 mb-1"><span>Daily Goal</span><span>{Math.floor(todayMins/60)}h / {data.dailyGoal}h</span></div><div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden"><div className={`h-full ${theme.bg} transition-all`} style={{width: `${percent}%`}}></div></div></div></div><div className="flex gap-2"><button onClick={togglePiP} className={`p-2 backdrop-blur border rounded-full transition ${isDark ? 'bg-[#18181b]/90 border-white/10 text-white' : 'bg-white/90 border-black/10 text-black'}`}><ExternalLink size={18}/></button><button onClick={toggleFullscreen} className={`p-2 backdrop-blur border rounded-full transition ${isDark ? 'bg-[#18181b]/90 border-white/10 text-white' : 'bg-white/90 border-black/10 text-black'}`}>{isFullscreen ? <Minimize size={18}/> : <Maximize size={18}/>}</button><button onClick={() => setShowSettings(!showSettings)} className={`p-2 backdrop-blur border rounded-full transition ${isDark ? 'bg-[#18181b]/90 border-white/10 text-white' : 'bg-white/90 border-black/10 text-black'}`}><Settings size={18}/></button></div></div>
-      <AnimatePresence>{showSettings && (<motion.div initial={{opacity:0, y:-20}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-20}} className={`absolute top-20 right-4 z-30 border p-4 rounded-xl shadow-2xl w-72 ${isDark ? 'bg-[#18181b] border-white/10' : 'bg-white border-black/10'}`}><h4 className={`font-bold mb-3 ${isDark ? 'text-white' : 'text-black'}`}><ImageIcon size={16}/> Custom Background</h4><div className="mb-3"><span className="text-[10px] text-gray-500 uppercase font-bold">Image URL</span><input type="text" placeholder="Paste URL..." className={`w-full border rounded p-2 text-xs outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-black'}`} value={data.bgImage?.startsWith('data') ? '' : data.bgImage} onChange={(e) => setData({...data, bgImage: e.target.value})} /></div><div className="mb-4"><span className="text-[10px] text-gray-500 uppercase font-bold">Or Upload</span><input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} /><button onClick={() => fileInputRef.current.click()} className={`mt-1 w-full flex items-center justify-center gap-2 py-2 border rounded-lg text-xs font-bold transition ${isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 border-gray-300 text-gray-700'}`}><Upload size={14} /> Choose File</button></div><div className="flex justify-end"><button onClick={() => setData({...data, bgImage: ''})} className="text-xs text-red-400 hover:text-red-300">Remove Image</button></div></motion.div>)}</AnimatePresence>
-      <div className="flex-1 flex flex-col items-center justify-center gap-8 z-10">{!isActive && (<div className={`flex backdrop-blur p-1 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/5'}`}><button onClick={() => { setMode('stopwatch'); setTimeLeft(0); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'stopwatch' ? `${theme.bg} text-white` : 'text-gray-500'}`}>Stopwatch</button><button onClick={() => { setMode('timer'); setTimeLeft(initialTimerTime*60); }} className={`px-4 py-2 rounded-md text-sm font-bold transition ${mode === 'timer' ? `${theme.bg} text-white` : 'text-gray-500'}`}>Timer</button></div>)}<div className="text-center"><div className={`text-[6rem] md:text-[10rem] font-bold font-mono tracking-tighter leading-none tabular-nums drop-shadow-2xl ${isDark ? 'text-white' : 'text-black'}`}>{formatTime(timeLeft)}</div>{mode === 'timer' && !isActive && (<div className="mt-4 flex items-center justify-center gap-2"><span className="text-gray-400">Set Minutes:</span><input type="number" value={initialTimerTime} onChange={(e) => { const val = parseInt(e.target.value) || 0; setInitialTimerTime(val); setTimeLeft(val * 60); }} className={`border rounded px-2 py-1 w-20 text-center font-bold backdrop-blur ${isDark ? 'bg-white/10 border-white/10 text-white' : 'bg-white/50 border-black/10 text-black'}`} /></div>)}</div><div className={`backdrop-blur border p-2 rounded-2xl flex items-center gap-4 shadow-2xl transition-all duration-500 ${isDark ? 'bg-[#18181b]/90 border-white/10' : 'bg-white/90 border-black/10'}`}>{isActive ? (<div className={`px-6 py-3 font-bold flex items-center gap-2 rounded-xl ${theme.light} ${theme.text}`}><div className={`w-2 h-2 rounded-full ${theme.bg} animate-pulse`}></div>Studying: {selectedSub}</div>) : (<select className={`appearance-none py-3 pl-4 pr-8 rounded-xl font-bold outline-none cursor-pointer ${isDark ? 'bg-[#27272a] text-white' : 'bg-gray-100 text-black'}`} value={selectedSub} onChange={(e) => setSelectedSub(e.target.value)}>{mySubjects.map(s => <option key={s} value={s}>{s}</option>)}</select>)}{!isActive ? (<button onClick={handleStart} className={`px-8 py-3 ${theme.bg} ${theme.hover} text-white font-bold rounded-xl flex items-center gap-2 active:scale-95`}><Play size={20} fill="currentColor" /> {timeLeft > 0 && mode === 'timer' && timeLeft < initialTimerTime*60 ? "Resume" : "Start"}</button>) : (<button onClick={() => setIsActive(false)} className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-xl flex items-center gap-2 active:scale-95"><Pause size={20} fill="currentColor" /> Pause</button>)}{(timeLeft > 0 || isActive) && <button onClick={handleStop} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl border border-red-500/20"><StopCircle size={20} /></button>}</div></div></div>
-  );
-};
-
-const MockTestTracker = ({ data, setData, theme, isDark }) => {
-  const [isAdding, setIsAdding] = useState(false); const [filterType, setFilterType] = useState('All'); const [testType, setTestType] = useState(data.selectedExams?.[0] || 'Mains'); const [newTest, setNewTest] = useState({ name: '', date: '', p: '', c: '', m: '', maxMarks: 0, reminder: false });
-  useEffect(() => { const config = EXAM_CONFIG[testType]; if(config && isAdding) { setNewTest(prev => ({ ...prev, maxMarks: config.marks || 300 })); } }, [testType, isAdding]);
-  const requestNotificationPermission = async () => { if (!("Notification" in window)) { alert("This browser does not support desktop notification"); return; } if (Notification.permission !== "granted") await Notification.requestPermission(); };
-  const addTest = () => { if (!newTest.name || !newTest.date) return; const p = parseFloat(newTest.p) || 0; const c = parseFloat(newTest.c) || 0; const m = parseFloat(newTest.m) || 0; const total = p + c + m; const max = parseInt(newTest.maxMarks) || 300; const testEntry = { id: Date.now(), type: testType, name: newTest.name, date: newTest.date, p, c, m, total, maxMarks: max, reminder: newTest.reminder }; if(newTest.reminder) requestNotificationPermission(); setData(prev => ({ ...prev, mockTests: [...(prev.mockTests || []), testEntry] })); setIsAdding(false); setNewTest({ name: '', date: '', p: '', c: '', m: '', maxMarks: 0, reminder: false }); };
-  const deleteTest = (id) => { if(window.confirm("Delete record?")) setData(prev => ({ ...prev, mockTests: prev.mockTests.filter(t => t.id !== id) })); };
-  const filteredTests = (data.mockTests || []).filter(t => { if (filterType === 'All') return true; return t.type === filterType; }); const sortedTests = [...filteredTests].sort((a,b) => new Date(a.date) - new Date(b.date)); const graphTests = (data.mockTests || []).filter(t => t.type === filterType).sort((a,b) => new Date(a.date) - new Date(b.date));
-  const textCol = isDark ? 'text-white' : 'text-gray-900';
-  return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"><div><h1 className={`text-3xl font-bold ${textCol} mb-2`}>Mock Test Analysis</h1><p className="text-gray-400">Track your {filterType} progress</p></div><div className="flex gap-2 overflow-x-auto max-w-full pb-2 no-scrollbar"><button onClick={() => setFilterType('All')} className={`px-4 py-2 rounded-lg text-sm font-bold border transition whitespace-nowrap ${filterType==='All' ? `${isDark ? 'bg-white text-black' : 'bg-black text-white'}` : `border-transparent text-gray-400`}`}>All History</button>{(data.selectedExams || []).map(exam => (<button key={exam} onClick={() => setFilterType(exam)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition whitespace-nowrap ${filterType===exam ? `${theme.bg} text-white` : `border-transparent text-gray-400`}`}>{exam}</button>))}</div><button onClick={() => setIsAdding(!isAdding)} className={`px-6 py-3 ${theme.bg} text-white rounded-xl font-bold flex items-center gap-2`}>{isAdding ? <X size={18}/> : <Plus size={18}/>} {isAdding ? 'Cancel' : 'Log Test'}</button></div>
-      {isAdding && (<GlassCard className={`border-t-4 ${theme.border}`} isDark={isDark}><div className="mb-6"><label className="text-xs text-gray-400 font-bold uppercase mb-2 block">Exam Type</label><select className={`w-full border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300 text-black'}`} value={testType} onChange={(e) => setTestType(e.target.value)}>{(data.selectedExams?.length > 0 ? data.selectedExams : ['JEE Mains (Jan) 2027']).map(e => <option key={e} value={e}>{e}</option>)}<option value="Custom">Custom</option></select></div><div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end"><div className="col-span-2 space-y-2"><label className="text-xs text-gray-400 font-bold uppercase">Name</label><input type="text" className={`w-full border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newTest.name} onChange={e => setNewTest({...newTest, name: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-gray-400 font-bold uppercase">Date</label><input type="date" className={`w-full border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newTest.date} onChange={e => setNewTest({...newTest, date: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-violet-400 font-bold uppercase">P</label><input type="number" className={`w-full border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newTest.p} onChange={e => setNewTest({...newTest, p: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-green-400 font-bold uppercase">C</label><input type="number" className={`w-full border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newTest.c} onChange={e => setNewTest({...newTest, c: e.target.value})} /></div><div className="space-y-2"><label className="text-xs text-blue-400 font-bold uppercase">M/B</label><input type="number" className={`w-full border rounded-lg p-3 outline-none ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newTest.m} onChange={e => setNewTest({...newTest, m: e.target.value})} /></div></div><div className="mt-4"><label className="text-xs text-orange-400 font-bold uppercase">Total Max Marks</label><input type="number" className={`border rounded-lg p-3 outline-none w-40 ml-4 ${isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-300'}`} value={newTest.maxMarks} onChange={e => setNewTest({...newTest, maxMarks: e.target.value})} /></div><div className="mt-4 flex items-center gap-2"><input type="checkbox" id="remindMe" className={`w-5 h-5 ${theme.ring}`} checked={newTest.reminder} onChange={e => setNewTest({...newTest, reminder: e.target.checked})} /><label htmlFor="remindMe" className="text-gray-500 text-sm font-bold flex items-center gap-2"><Bell size={16} /> Remind me</label></div><button onClick={addTest} className={`mt-6 w-full py-3 font-bold rounded-lg ${theme.bg} text-white`}>Save Score</button></GlassCard>)}
-      {filterType !== 'All' && graphTests.length > 0 && (<GlassCard className="h-[400px]" isDark={isDark}><h3 className={`text-lg font-bold ${textCol} mb-4`}>{filterType} Trend</h3><ResponsiveContainer width="100%" height="90%"><LineChart data={graphTests}><CartesianGrid strokeDasharray="3 3" stroke={isDark?"rgba(255,255,255,0.05)":"#eee"} /><XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} /><YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} domain={[0, 'auto']} /><RechartsTooltip contentStyle={{backgroundColor: isDark?'#18181b':'#fff', borderColor: isDark?'#27272a':'#ddd', color: isDark?'#fff':'#000'}} /><Legend /><Line type="monotone" dataKey="total" stroke={theme.stroke} strokeWidth={3} dot={{r:4}} name="Total Score" /></LineChart></ResponsiveContainer></GlassCard>)}
-      <div className="grid gap-3">{sortedTests.length > 0 ? sortedTests.slice().reverse().map(test => (<div key={test.id} className={`group border p-4 rounded-xl flex items-center justify-between transition ${isDark ? 'bg-[#121212] border-white/10 hover:border-white/20' : 'bg-white border-gray-200 hover:border-gray-300'}`}><div className="flex gap-4 items-center"><div className={`w-1 h-12 rounded-full ${test.type.includes('NEET') || test.type.includes('PCB') ? 'bg-red-500' : theme.bg}`}></div><div><div className="flex items-center gap-3"><h3 className={`font-bold ${textCol}`}>{test.name}</h3><span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{test.type}</span>{test.reminder && <Bell size={12} className={theme.text} />}</div><div className="text-xs text-gray-500 mt-1">{test.date}</div><div className="flex gap-4 mt-2 text-sm"><span className="text-violet-400">P: {test.p}</span><span className="text-green-400">C: {test.c}</span><span className="text-blue-400">M/B: {test.m}</span></div></div></div><div className="flex items-center gap-6"><div className="text-right"><div className={`text-2xl font-bold ${textCol}`}>{test.total} <span className="text-sm text-gray-500 font-normal">/ {test.maxMarks}</span></div><div className="text-xs text-gray-500 uppercase">{test.maxMarks > 0 ? Math.round((test.total / test.maxMarks) * 100) : 0}%</div></div><button onClick={() => deleteTest(test.id)} className="p-2 text-gray-600 hover:text-red-500 transition"><Trash2 size={20} /></button></div></div>)) : <div className="text-center py-10 text-gray-500">No tests found.</div>}</div>
-    </div>
-  );
-};
-
 // --- APP SHELL ---
 export default function App() {
   const [user, setUser] = useState(null);
@@ -566,7 +473,6 @@ export default function App() {
   const [showExamSelect, setShowExamSelect] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default open
 
-  // --- DERIVE THEME (WITH FALLBACK) ---
   const theme = getThemeStyles(data?.settings?.theme || 'Violet');
   const isDark = (data?.settings?.mode || 'Dark') === 'Dark';
 
@@ -627,10 +533,12 @@ export default function App() {
       </aside>
 
       <main className={`flex-1 p-6 md:p-10 pb-24 h-screen overflow-y-auto custom-scrollbar transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'}`}>
-        <div className={`flex justify-between items-center mb-8 sticky top-0 backdrop-blur-md z-30 py-2 -mt-4 border-b ${isDark ? 'bg-[#09090b]/90 border-white/5' : 'bg-gray-100/90 border-black/5'}`}>
-           <h2 className={`text-xl font-bold capitalize flex items-center gap-2 ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{view === 'kpp' ? 'Physics KPP' : view}</h2>
-           <ProfileDropdown user={user} onLogout={handleLogout} onChangeExam={() => setShowExamSelect(true)} data={data} setView={setView} theme={theme} isDark={isDark} />
-        </div>
+        {view !== 'prepai' && (
+          <div className={`flex justify-between items-center mb-8 sticky top-0 backdrop-blur-md z-30 py-2 -mt-4 border-b ${isDark ? 'bg-[#09090b]/90 border-white/5' : 'bg-gray-100/90 border-black/5'}`}>
+             <h2 className={`text-xl font-bold capitalize flex items-center gap-2 ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{view === 'kpp' ? 'Physics KPP' : view}</h2>
+             <ProfileDropdown user={user} onLogout={handleLogout} onChangeExam={() => setShowExamSelect(true)} data={data} setView={setView} theme={theme} isDark={isDark} />
+          </div>
+        )}
 
         {view === 'dashboard' && <Dashboard data={data} setData={setData} goToTimer={() => setView('timer')} setView={setView} user={user} theme={theme} isDark={isDark} />}
         {view === 'prepai' && <PrepAIView data={data} theme={theme} isDark={isDark} />}
