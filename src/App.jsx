@@ -291,7 +291,7 @@ const PrepAIView = ({ data, theme, isDark }) => {
     try {
       // --- API KEY HERE ---
       const genAI = new GoogleGenerativeAI("AIzaSyCUxcGF6dYqYm4uoZavFWOZyC7n795Hxso");
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // 1.5 Flash supports images
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // 1.5 Flash supports images
 
       const context = `SYSTEM: You are PrepAI, an expert JEE/NEET tutor. Use clear formatting. If the user sends an image, solve the question in it step-by-step.`;
       
